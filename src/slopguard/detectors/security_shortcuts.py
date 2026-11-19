@@ -10,15 +10,18 @@ from slopguard.models import Finding, Severity
 _SHELL_FUNCS = {"run", "Popen", "call", "check_call", "check_output"}
 
 
-def detect_security_shortcuts(file_path: Path, rel_path: str, content: str) -> list[Finding]:
+def detect_security_shortcuts(
+    file_path: Path, rel_path: str, content: str, tree: ast.AST | None = None
+) -> list[Finding]:
     findings: list[Finding] = []
     if file_path.suffix.lower() != ".py":
         return findings
 
-    try:
-        tree = ast.parse(content, filename=rel_path)
-    except SyntaxError:
-        return findings
+    if tree is None:
+        try:
+            tree = ast.parse(content, filename=rel_path)
+        except SyntaxError:
+            return findings
 
     lines = content.splitlines()
 

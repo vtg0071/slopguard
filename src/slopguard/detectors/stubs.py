@@ -71,16 +71,23 @@ def _extract_python_comments(content: str) -> list[tuple[int, int, str]]:
     return comments
 
 
-def detect_stubs(file_path: Path, rel_path: str, content: str) -> list[Finding]:
+def detect_stubs(
+    file_path: Path,
+    rel_path: str,
+    content: str,
+    tree: ast.AST | None = None,
+    comments: list[tuple[int, int, str]] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
     suffix = file_path.suffix.lower()
     lines = content.splitlines()
 
     if suffix == ".py" and file_path.name != "__init__.py":
-        try:
-            tree = ast.parse(content, filename=rel_path)
-        except SyntaxError:
-            return findings
+        if tree is None:
+            try:
+                tree = ast.parse(content, filename=rel_path)
+            except SyntaxError:
+                return findings
 
         protocol_methods: set[int] = set()
         for node in ast.walk(tree):
@@ -117,7 +124,7 @@ def detect_stubs(file_path: Path, rel_path: str, content: str) -> list[Finding]:
                         )
                     )
 
-        for line_no, col_no, comment_text in _extract_python_comments(content):
+        for line_no, col_no, comment_text in (comments if comments is not None else _extract_python_comments(content)):
             m = _TODO_RE.search(comment_text)
             if m:
                 tag = m.group(1).upper()

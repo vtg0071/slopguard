@@ -39,7 +39,12 @@ def _iter_scannable_text_segments(file_path: Path, content: str) -> list[tuple[i
     return segments
 
 
-def detect_prompt_injection(file_path: Path, rel_path: str, content: str) -> list[Finding]:
+def detect_prompt_injection(
+    file_path: Path,
+    rel_path: str,
+    content: str,
+    comments: list[tuple[int, int, str]] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
     lines = content.splitlines()
 
@@ -80,7 +85,8 @@ def detect_prompt_injection(file_path: Path, rel_path: str, content: str) -> lis
                 break
 
     # 2. Prompt injection phrases in comments / docs
-    for line_no, base_col, seg_text in _iter_scannable_text_segments(file_path, content):
+    segs = comments if (comments is not None and file_path.suffix.lower() == ".py") else _iter_scannable_text_segments(file_path, content)
+    for line_no, base_col, seg_text in segs:
         m = PROMPT_INJECTION_RE.search(seg_text)
         if m:
             findings.append(

@@ -171,3 +171,12 @@ def load_config(root: Path) -> SlopGuardConfig:
             cfg.extra_dependencies = {str(x).lower().replace("-", "_") for x in deps}
 
     return cfg
+
+
+def find_project_root(target: Path) -> Path:
+    """Walk upward from target to find the nearest repository/package root."""
+    start = target if target.is_dir() else target.parent
+    for candidate in [start, *start.parents]:
+        if any((candidate / m).exists() for m in ("pyproject.toml", "package.json", "requirements.txt", ".git")):
+            return candidate
+    return start

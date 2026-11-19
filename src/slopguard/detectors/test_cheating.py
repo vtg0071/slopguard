@@ -90,7 +90,9 @@ def _extract_brace_block(content: str, open_brace_idx: int) -> str:
     return content[open_brace_idx:]
 
 
-def detect_test_cheating(file_path: Path, rel_path: str, content: str) -> list[Finding]:
+def detect_test_cheating(
+    file_path: Path, rel_path: str, content: str, tree: ast.AST | None = None
+) -> list[Finding]:
     findings: list[Finding] = []
     if not _is_test_file(file_path):
         return findings
@@ -141,10 +143,11 @@ def detect_test_cheating(file_path: Path, rel_path: str, content: str) -> list[F
     if suffix != ".py":
         return findings
 
-    try:
-        tree = ast.parse(content, filename=rel_path)
-    except SyntaxError:
-        return findings
+    if tree is None:
+        try:
+            tree = ast.parse(content, filename=rel_path)
+        except SyntaxError:
+            return findings
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from slopguard import __version__
-from slopguard.config import load_config
+from slopguard.config import find_project_root, load_config
 from slopguard.detectors import RULES
 from slopguard.formatters import format_json, format_markdown, format_sarif, format_terminal
 from slopguard.models import Severity
@@ -88,21 +88,13 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _find_root(target: Path) -> Path:
-    start = target if target.is_dir() else target.parent
-    for candidate in [start, *start.parents]:
-        if any((candidate / m).exists() for m in ("pyproject.toml", "package.json", "requirements.txt", ".git")):
-            return candidate
-    return start
-
-
 def _cmd_check(args: argparse.Namespace) -> int:
     target = Path(args.target)
     if not target.exists():
         print(f"Error: target path '{args.target}' does not exist.", file=sys.stderr)
         return 2
 
-    cfg = load_config(_find_root(target.resolve()))
+    cfg = load_config(find_project_root(target.resolve()))
     report = scan_path(
         target,
         config=cfg,
@@ -196,7 +188,7 @@ def _cmd_hook(args: argparse.Namespace) -> int:
     if not target.exists():
         return 0
 
-    cfg = load_config(_find_root(target.resolve()))
+    cfg = load_config(find_project_root(target.resolve()))
     report = scan_path(target, config=cfg)
     if report.has_findings_at_or_above(cfg.fail_on):
         msg = format_markdown(report)

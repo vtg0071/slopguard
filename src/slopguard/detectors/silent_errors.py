@@ -30,16 +30,19 @@ def _is_swallowed_body(body: list[ast.stmt]) -> bool:
     return False
 
 
-def detect_silent_errors(file_path: Path, rel_path: str, content: str) -> list[Finding]:
+def detect_silent_errors(
+    file_path: Path, rel_path: str, content: str, tree: ast.AST | None = None
+) -> list[Finding]:
     findings: list[Finding] = []
     suffix = file_path.suffix.lower()
     lines = content.splitlines()
 
     if suffix == ".py":
-        try:
-            tree = ast.parse(content, filename=rel_path)
-        except SyntaxError:
-            return findings
+        if tree is None:
+            try:
+                tree = ast.parse(content, filename=rel_path)
+            except SyntaxError:
+                return findings
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler):

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import ast
+import io
 import re
 import subprocess
 import time
+import tokenize
 from pathlib import Path
 
-from slopguard.config import SlopGuardConfig, load_config
+from slopguard.config import SlopGuardConfig, find_project_root, load_config
 from slopguard.detectors.phantom_imports import (
     collect_declared_dependencies,
     collect_local_modules,
@@ -29,14 +32,6 @@ CODE_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 
 _INLINE_IGNORE_RE = re.compile(r"(?:#|//)\s*slopguard:\s*ignore(?:\s+([A-Z0-9,\s]+))?", re.IGNORECASE)
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-
-
-def _find_project_root(target: Path) -> Path:
-    start = target if target.is_dir() else target.parent
-    for candidate in [start, *start.parents]:
-        if any((candidate / m).exists() for m in ("pyproject.toml", "package.json", "requirements.txt", ".git")):
-            return candidate
-    return start
 
 
 def _is_line_suppressed(lines: list[str], line_no: int, rule_id: str) -> bool:
@@ -125,6 +120,22 @@ def _iter_target_files(target: Path, cfg: SlopGuardConfig, root: Path) -> list[P
     return files
 
 
+def _parse_python_once(content: str, rel_path: str) -> tuple[ast.AST | None, list[tuple[int, int, str]]]:
+    tree: ast.AST | None = None
+    comments: list[tuple[int, int, str]] = []
+    try:
+        tree = ast.parse(content, filename=rel_path)
+    except SyntaxError:
+        tree = None
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(content).readline):
+            if tok.type == tokenize.COMMENT:
+                comments.append((tok.start[0], tok.start[1] + 1, tok.string))
+    except tokenize.TokenError:
+        pass
+    return tree, comments
+
+
 def scan_path(
     target_path: str | Path,
     config: SlopGuardConfig | None = None,
@@ -134,7 +145,7 @@ def scan_path(
 ) -> ScanReport:
     t0 = time.perf_counter()
     target = Path(target_path).resolve()
-    root = _find_project_root(target)
+    root = find_project_root(target)
     cfg = config or load_config(root)
 
     changed_map: dict[str, set[int]] | None = None
@@ -171,23 +182,31 @@ def scan_path(
         scanned_count += 1
         lines = content.splitlines()
         file_findings: list[Finding] = []
+        suffix = fpath.suffix.lower()
+
+        tree: ast.AST | None = None
+        comments: list[tuple[int, int, str]] | None = None
+        if suffix == ".py":
+            tree, comments = _parse_python_once(content, rel)
 
         if "SG006" not in disabled:
-            file_findings.extend(detect_prompt_injection(fpath, rel, content))
+            file_findings.extend(detect_prompt_injection(fpath, rel, content, comments=comments))
         if "SG005" not in disabled:
             file_findings.extend(detect_secrets(fpath, rel, content))
 
-        if fpath.suffix.lower() in CODE_EXTENSIONS:
+        if suffix in CODE_EXTENSIONS:
             if "SG001" not in disabled:
-                file_findings.extend(detect_phantom_imports(fpath, rel, content, declared_deps, local_modules))
+                file_findings.extend(
+                    detect_phantom_imports(fpath, rel, content, declared_deps, local_modules, tree=tree)
+                )
             if "SG002" not in disabled:
-                file_findings.extend(detect_stubs(fpath, rel, content))
+                file_findings.extend(detect_stubs(fpath, rel, content, tree=tree, comments=comments))
             if "SG003" not in disabled:
-                file_findings.extend(detect_silent_errors(fpath, rel, content))
+                file_findings.extend(detect_silent_errors(fpath, rel, content, tree=tree))
             if "SG004" not in disabled:
-                file_findings.extend(detect_test_cheating(fpath, rel, content))
+                file_findings.extend(detect_test_cheating(fpath, rel, content, tree=tree))
             if "SG007" not in disabled:
-                file_findings.extend(detect_security_shortcuts(fpath, rel, content))
+                file_findings.extend(detect_security_shortcuts(fpath, rel, content, tree=tree))
 
         for finding in file_findings:
             if changed_map is not None and finding.line not in changed_map.get(rel, set()):

@@ -205,15 +205,17 @@ def detect_phantom_imports(
     content: str,
     declared_deps: set[str],
     local_modules: set[str],
+    tree: ast.AST | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     suffix = file_path.suffix.lower()
 
     if suffix == ".py":
-        try:
-            tree = ast.parse(content, filename=rel_path)
-        except SyntaxError:
-            return findings
+        if tree is None:
+            try:
+                tree = ast.parse(content, filename=rel_path)
+            except SyntaxError:
+                return findings
 
         guarded_lines = _collect_guarded_import_lines(tree)
         lines = content.splitlines()
