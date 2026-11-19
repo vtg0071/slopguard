@@ -12,6 +12,7 @@ import tokenize
 from pathlib import Path
 
 from slopguard.config import SlopGuardConfig, find_project_root, load_config
+from slopguard.detectors.api_hallucinations import detect_api_hallucinations
 from slopguard.detectors.code_quality import detect_code_quality
 from slopguard.detectors.phantom_imports import (
     collect_declared_dependencies,
@@ -191,6 +192,8 @@ def _scan_single_file(
         findings.extend(detect_security_shortcuts(fpath, rel, content, tree=tree))
     if "SG008" not in disabled:
         findings.extend(detect_code_quality(fpath, rel, content, tree=tree))
+    if "SG009" not in disabled:
+        findings.extend(detect_api_hallucinations(fpath, rel, content, tree=tree))
     return findings
 
 

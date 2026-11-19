@@ -1,5 +1,5 @@
 name: "SlopGuard"
-description: "Catch AI coding slop before it hits main: phantom imports, stubs, silent failures, test cheating, secrets, and prompt injections."
+description: "Catch AI coding slop before it hits main: phantom imports, hallucinated APIs, stubs, silent failures, test cheating, secrets, and prompt injections."
 author: "SlopGuard Contributors"
 branding:
   icon: "shield"
@@ -14,6 +14,18 @@ inputs:
     description: "Minimum severity to fail CI (critical, high, medium, low, none)"
     required: false
     default: "high"
+  diff:
+    description: "Optional git ref for PR diff scoping (e.g. origin/main)"
+    required: false
+    default: ""
+  verify-registry:
+    description: "Verify declared PyPI/npm packages against live registries"
+    required: false
+    default: "false"
+  comment-pr:
+    description: "Post SlopGuard Markdown summary on pull requests"
+    required: false
+    default: "true"
   sarif-file:
     description: "Optional path to write SARIF output"
     required: false
@@ -32,5 +44,18 @@ runs:
     - name: Run SlopGuard
       shell: bash
       run: |
-        slopguard check "${{ inputs.target }}" --format sarif --output "${{ inputs.sarif-file }}" --fail-on none
-        slopguard check "${{ inputs.target }}" --fail-on "${{ inputs.fail-on }}"
+        EXTRA_ARGS=""
+        if [ -n "${{ inputs.diff }}" ]; then EXTRA_ARGS="$EXTRA_ARGS --diff ${{ inputs.diff }}"; fi
+        if [ "${{ inputs.verify-registry }}" = "true" ]; then EXTRA_ARGS="$EXTRA_ARGS --verify-registry"; fi
+        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --format sarif --output "${{ inputs.sarif-file }}" --fail-on none
+        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --format markdown --output slopguard-pr-comment.md --fail-on none
+        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --fail-on "${{ inputs.fail-on }}"
+    - name: Comment on PR
+      if: always() && github.event_name == 'pull_request' && inputs.comment-pr == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ -f slopguard-pr-comment.md ]; then
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file slopguard-pr-comment.md || true
+        fi

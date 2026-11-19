@@ -72,6 +72,12 @@ RULES: dict[str, RuleMeta] = {
         default_severity=Severity.MEDIUM,
         category="Code Quality",
         description="Detects mutable default arguments, unreachable code, deep nesting, oversized functions, and duplicate function bodies.",
+    ),    "SG009": RuleMeta(
+        rule_id="SG009",
+        title="Hallucinated Stdlib API / Attribute",
+        default_severity=Severity.HIGH,
+        category="Slopsquatting & Hallucinations",
+        description="Detects calls or references to non-existent attributes/methods on Python standard library modules (e.g., json.parse).",
     ),
 }
 

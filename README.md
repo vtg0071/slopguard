@@ -49,6 +49,7 @@ Traditional linters check formatting and syntax. Security scanners check known C
 | **Trojan Source Bidi & Agent Prompt Injections** | — | — | — | **SG006** |
 | **Unsafe Security Shortcuts** (`verify=False`, `shell=True`, `yaml.load`) | — | Partial | — | **SG007** |
 | **Structural Code-Quality Slop** (mutable defaults, dead code, deep nesting, duplicate bodies) | Partial | — | — | **SG008** |
+| **Hallucinated Stdlib APIs** (`json.parse`, `os.path.exist`) | Partial | — | — | **SG009** |
 | **Zero-Dependency + Claude Code `PostToolUse` Hook** | — | — | — | **Built-in** |
 
 ---

@@ -60,3 +60,13 @@ Run `python3 growth/scripts/generate_launch_pack.py --repo https://github.com/YO
 1. **Automated Rule-Request Triage**: Set up a GitHub Actions workflow triggered on `issues` labeled `new-rule` that invokes Claude Code to scaffold the detector in `src/slopguard/detectors/`, add unit tests, and open a draft PR.
 2. **Weekly Changelog & Release Bot**: Every Friday, summarize merged PRs and star milestones into a release note and X post.
 3. **Ecosystem Integrations**: Publish to PyPI (`twine upload dist/*`) and submit to GitHub Marketplace (`action.yml` is already Marketplace-ready!).
+
+
+---
+
+## 6. High-Leverage Viral Distribution Upgrades (Zero-Following Playbook)
+1. **Zero-Install Browser Tryout (`slopguard.dev/owner/repo`):** Following `gitingest` and `GitDiagram`, let any developer swap `github.com` in a repo URL to get an instant **Slop Score Card + copyable `Protected by SlopGuard` README badge** in 3 seconds with zero `pip install`.
+2. **PR Auto-Comment Loop (`action.yml`):** Enable `comment-pr: true` (now built into `action.yml`) so every pull request gets an automatic `SlopGuard Report — Grade` comment linking back to the repo.
+3. **5-Second Animated Terminal GIF/MP4:** Record a crisp 5-second video showing Claude Code writing a hallucinated import and `slopguard hook --claude` blocking it in real time for X/Twitter, Reddit (`r/ClaudeAI`, `r/Python`), and Product Hunt.
+4. **Lead Launch Posts With the 100-Repo Benchmark:** Run `slopguard check --format json` across 100 recent AI-built repos locally and lead Show HN with empirical percentages rather than a generic tool announcement.
+5. **Pre-Launch Plumbing:** Replace `YOUR_USERNAME` in `README.md`, `pyproject.toml`, and `CONTRIBUTING.md`, publish `v0.1.0` to PyPI (`python -m build && twine upload dist/*`), and upload `assets/banner.png` under **Settings -> Social preview**.

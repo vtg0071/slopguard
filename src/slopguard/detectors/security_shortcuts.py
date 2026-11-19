@@ -8,6 +8,7 @@ from pathlib import Path
 from slopguard.models import Finding, Severity
 
 _SHELL_FUNCS = {"run", "Popen", "call", "check_call", "check_output"}
+_DANGEROUS_BUILTINS = {"eval", "exec"}
 
 
 def _check_weak_hash_call(node: ast.Call, rel_path: str, snippet: str) -> Finding | None:
@@ -60,6 +61,38 @@ def _check_yaml_load_call(node: ast.Call, rel_path: str, snippet: str) -> Findin
         snippet=snippet,
         suggestion="Use yaml.safe_load() or pass Loader=yaml.SafeLoader.",
     )
+
+
+def _check_dangerous_exec(node: ast.Call, rel_path: str, snippet: str) -> Finding | None:
+    if isinstance(node.func, ast.Name) and node.func.id in _DANGEROUS_BUILTINS:
+        return Finding(
+            rule_id="SG007",
+            title="Unsafe AI Security Shortcut",
+            severity=Severity.HIGH,
+            category="Insecure Defaults",
+            file_path=rel_path,
+            line=node.lineno,
+            column=node.col_offset + 1,
+            message=f"Dynamic code execution via {node.func.id}() risks arbitrary code execution.",
+            snippet=snippet,
+            suggestion=f"Avoid {node.func.id}() on untrusted input; use ast.literal_eval() or explicit dispatch.",
+        )
+    if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+        mod, attr = node.func.value.id, node.func.attr
+        if (mod == "pickle" and attr in {"load", "loads"}) or (mod == "os" and attr == "system"):
+            return Finding(
+                rule_id="SG007",
+                title="Unsafe AI Security Shortcut",
+                severity=Severity.HIGH,
+                category="Insecure Defaults",
+                file_path=rel_path,
+                line=node.lineno,
+                column=node.col_offset + 1,
+                message=f"Unsafe call {mod}.{attr}() risks arbitrary code/command execution.",
+                snippet=snippet,
+                suggestion="Use json.loads() instead of pickle, or subprocess.run(..., shell=False) instead of os.system().",
+            )
+    return None
 
 
 def _inspect_call_node(node: ast.Call, rel_path: str, snippet: str) -> list[Finding]:
@@ -117,6 +150,9 @@ def _inspect_call_node(node: ast.Call, rel_path: str, snippet: str) -> list[Find
                 )
             )
 
+    dangerous = _check_dangerous_exec(node, rel_path, snippet)
+    if dangerous:
+        findings.append(dangerous)
     unsafe_yaml = _check_yaml_load_call(node, rel_path, snippet)
     if unsafe_yaml:
         findings.append(unsafe_yaml)

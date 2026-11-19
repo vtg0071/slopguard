@@ -26,7 +26,7 @@ Run `slopguard check` on your changes and iterate until exit code `0`:
    - Branch diff vs base: `slopguard check --diff origin/main --fail-on low` (use your repo's base branch if not `origin/main`)
 2. **Verify new or updated dependencies** (when network is available):
    - `slopguard check --diff HEAD --verify-registry`
-3. **Auto-fix & re-verify:** Run `slopguard check <target> --fix` for mechanical fixes (`SG006`/`SG007`), fix remaining `SG001`–`SG008` findings (or suppress intentional cases with `# slopguard: ignore SG00X -- reason`), then run the project's test suite and re-run `slopguard check`.
+3. **Auto-fix & re-verify:** Run `slopguard check <target> --fix` for mechanical fixes (`SG006`/`SG007`), fix remaining `SG001`–`SG009` findings (or suppress intentional cases with `# slopguard: ignore SG00X -- reason`), then run the project's test suite and re-run `slopguard check`.
 
 ## Gotchas
 - **Default threshold skips Medium/Low slop:** `.slopguard.toml` defaults `fail-on = "high"`, which skips `SG004` (test cheating) and `SG008` (structural slop). Always pass `--fail-on low` when checking your own diff.

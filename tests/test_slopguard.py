@@ -20,6 +20,7 @@ from slopguard.fixer import fix_path
 from slopguard.mcp_server import handle_mcp_request
 from slopguard.scanner import write_baseline
 from slopguard.config import SlopGuardConfig, _parse_simple_toml_fallback
+from slopguard.detectors.api_hallucinations import detect_api_hallucinations
 from slopguard.detectors.code_quality import detect_code_quality
 from slopguard.detectors.phantom_imports import detect_phantom_imports
 from slopguard.detectors.prompt_injection import detect_prompt_injection
@@ -174,10 +175,22 @@ class TestDetectors(unittest.TestCase):
             "yaml.load('a: 1')\n"
             "app.run(host='0.0.0.0')\nhashlib.md5(b'abc')\n"
         )
+        code += "eval('1+1')\npickle.loads(b'x')\nos.system('ls')\n"
         findings = detect_security_shortcuts(Path("sec.py"), "sec.py", code)
-        self.assertEqual(len(findings), 5)
+        self.assertEqual(len(findings), 8)
         self.assertTrue(all(f.rule_id == "SG007" for f in findings))
 
+
+    def test_sg009_api_hallucinations(self):
+        code = "import json\njson.parse('{}')\njson.loads('{}')\n"
+        findings = detect_api_hallucinations(Path("api.py"), "api.py", code)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "SG009")
+
+    def test_sg002_js_empty_function_stub(self):
+        js_code = "function todoHandler() {}\nconst arrowStub = () => { throw new Error('Not implemented'); };\n"
+        findings = detect_stubs(Path("handler.ts"), "handler.ts", js_code)
+        self.assertEqual(len(findings), 2)
 
     def test_sg008_code_quality_slop(self):
         code = (

@@ -12,6 +12,7 @@ from slopguard.models import Finding, Severity
 
 _TODO_RE = re.compile(r"#\s*(TODO|FIXME|XXX|HACK|PLACEHOLDER)\b[:\s]*(.*)", re.IGNORECASE)
 _JS_TODO_RE = re.compile(r"//\s*(TODO|FIXME|XXX|HACK|PLACEHOLDER)\b[:\s]*(.*)", re.IGNORECASE)
+_JS_EMPTY_FN_RE = re.compile(r"(?:function\s+([A-Za-z0-9_]+)\s*\([^)]*\)|(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)\s*\{\s*(?:throw\s+new\s+Error\(['\"]Not implemented['\"]\);?)?\s*\}", re.IGNORECASE)
 
 
 def _has_abstract_or_overload_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -162,6 +163,23 @@ def detect_stubs(
         return []
 
     findings: list[Finding] = []
+    for m in _JS_EMPTY_FN_RE.finditer(content):
+        fn_name = m.group(1) or m.group(2) or "anonymous"
+        line_no = content.count("\n", 0, m.start()) + 1
+        findings.append(
+            Finding(
+                rule_id="SG002",
+                title="Placeholder Stub or Unfinished Code",
+                severity=Severity.HIGH,
+                category="Incomplete Implementation",
+                file_path=rel_path,
+                line=line_no,
+                column=1,
+                message=f"JS/TS function '{fn_name}' is an empty or unimplemented stub.",
+                snippet=lines[line_no - 1].strip() if 0 < line_no <= len(lines) else "",
+                suggestion=f"Implement '{fn_name}' before merging.",
+            )
+        )
     for idx, line in enumerate(lines, start=1):
         m = _JS_TODO_RE.search(line)
         if m:
