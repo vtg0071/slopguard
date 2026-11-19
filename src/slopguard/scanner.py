@@ -14,7 +14,9 @@ from slopguard.detectors.phantom_imports import (
     detect_phantom_imports,
 )
 from slopguard.detectors.prompt_injection import detect_prompt_injection
+from slopguard.detectors.registry_check import verify_manifest_dependencies
 from slopguard.detectors.secrets import detect_secrets
+from slopguard.detectors.security_shortcuts import detect_security_shortcuts
 from slopguard.detectors.silent_errors import detect_silent_errors
 from slopguard.detectors.stubs import detect_stubs
 from slopguard.detectors.test_cheating import detect_test_cheating
@@ -128,6 +130,7 @@ def scan_path(
     config: SlopGuardConfig | None = None,
     diff_ref: str | None = None,
     staged: bool = False,
+    verify_registry: bool = False,
 ) -> ScanReport:
     t0 = time.perf_counter()
     target = Path(target_path).resolve()
@@ -145,6 +148,10 @@ def scan_path(
     all_findings: list[Finding] = []
     disabled = cfg.disabled_rules
     scanned_count = 0
+
+    if verify_registry and "SG001" not in disabled:
+        cache: dict[str, tuple[str, int | None]] = {}
+        all_findings.extend(verify_manifest_dependencies(root, cache))
 
     for fpath in files:
         try:
@@ -179,6 +186,8 @@ def scan_path(
                 file_findings.extend(detect_silent_errors(fpath, rel, content))
             if "SG004" not in disabled:
                 file_findings.extend(detect_test_cheating(fpath, rel, content))
+            if "SG007" not in disabled:
+                file_findings.extend(detect_security_shortcuts(fpath, rel, content))
 
         for finding in file_findings:
             if changed_map is not None and finding.line not in changed_map.get(rel, set()):

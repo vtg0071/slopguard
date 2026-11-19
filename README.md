@@ -6,7 +6,7 @@
 
 **Catch AI coding slop before it hits `main`.**
 
-Zero-dependency CLI, GitHub Action, and Claude Code hook that detects **hallucinated imports (slopsquatting)**, **placeholder stubs**, **silent exception swallowing**, **test cheating**, **leaked secrets**, and **hidden prompt injections** in `< 60ms` on typical PRs.
+Zero-dependency CLI, GitHub Action, and Claude Code hook that detects **hallucinated imports (slopsquatting)**, **placeholder stubs**, **silent exception swallowing**, **test cheating**, **leaked secrets**, **hidden prompt injections**, and **unsafe security shortcuts** in `< 60ms` on typical PRs.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-10B981?style=flat-square)](pyproject.toml)
@@ -15,6 +15,10 @@ Zero-dependency CLI, GitHub Action, and Claude Code hook that detects **hallucin
 </div>
 
 ---
+
+## Why This Exists
+
+Peer-reviewed research at [USENIX Security 2025](https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen) found that **5.2%** of packages suggested by commercial LLMs and **21.7%** by open-source models did not exist—creating a real supply-chain attack surface (**slopsquatting**). Alongside fake packages, coding agents routinely leave behind `except Exception: pass`, `NotImplementedError` stubs, `verify=False` shortcuts, and zero-assertion tests.
 
 ## See It in Action
 
@@ -37,12 +41,13 @@ Traditional linters check formatting and syntax. Security scanners check known C
 
 | Failure Mode | `ruff` / `eslint` | `bandit` | `gitleaks` | **SlopGuard** |
 | :--- | :---: | :---: | :---: | :---: |
-| **Hallucinated / Undeclared Imports** (`slopsquatting`) | — | — | — | **SG001** |
+| **Hallucinated / Undeclared Imports** (`slopsquatting` + `--verify-registry`) | — | — | — | **SG001** |
 | **Unfinished Stubs** (`pass`, `...`, `NotImplementedError`, `TODO`) | Partial | — | — | **SG002** |
 | **Silent Exception Swallowing** (`except Exception: pass`, `catch {}`) | Partial | B110 | — | **SG003** |
-| **Test Cheating** (zero assertions, `assert True`) | — | — | — | **SG004** |
+| **Test Cheating** (zero assertions, `assert True`, unjustified `@skip`) | — | — | — | **SG004** |
 | **Hardcoded AI/Cloud API Keys** (`sk-ant-`, `sk-proj-`, `ghp_`, `AKIA`) | — | — | Yes | **SG005** |
 | **Trojan Source Bidi & Agent Prompt Injections** | — | — | — | **SG006** |
+| **Unsafe Security Shortcuts** (`verify=False`, `shell=True`, `yaml.load`) | — | Partial | — | **SG007** |
 | **Zero-Dependency + Claude Code `PostToolUse` Hook** | — | — | — | **Built-in** |
 
 ---
@@ -67,45 +72,28 @@ slopguard check .
 slopguard check --diff origin/main
 slopguard check --staged
 
+# Also verify declared PyPI/npm packages against live registries (404 / <30d old)
+slopguard check . --verify-registry
+
 # Output JSON, GitHub PR Markdown, or SARIF v2.1.0
 slopguard check . --format json
 slopguard check . --format markdown
 slopguard check . --format sarif -o slopguard.sarif
 
-# Generate .slopguard.toml
+# Generate .slopguard.toml & list rules
 slopguard init
-
-# List all built-in rules
 slopguard rules
 ```
 
 ### 2. Claude Code `PostToolUse` Hook (Auto-Block Agent Slop)
 
-Run one command to wire it into `.claude/settings.json`:
+Run one command to wire SlopGuard into `.claude/settings.json` (or pass `--local` for `.claude/settings.local.json`):
 
 ```bash
 slopguard hook --install claude
 ```
 
-Or add it manually to `.claude/settings.json` so **Claude Code automatically runs SlopGuard after every file edit** and fixes hallucinated imports, stubs, or swallowed errors before you even review the diff:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "slopguard hook --claude"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+Every time Claude Code edits or writes a file, `slopguard hook --claude` scans it in milliseconds and feeds any issues back to the agent before you even review the diff.
 
 ### 3. GitHub Action
 

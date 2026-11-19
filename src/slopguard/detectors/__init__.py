@@ -23,14 +23,14 @@ RULES: dict[str, RuleMeta] = {
         title="Phantom / Undeclared Import",
         default_severity=Severity.CRITICAL,
         category="Slopsquatting & Hallucinations",
-        description="Import references a package not found in stdlib, local modules, or declared dependencies.",
+        description="Import references a package not found in stdlib, local modules, declared dependencies, or live registry (--verify-registry).",
     ),
     "SG002": RuleMeta(
         rule_id="SG002",
         title="Placeholder Stub or Unfinished Code",
         default_severity=Severity.HIGH,
         category="Incomplete Implementation",
-        description="Function body is an unimplemented stub (pass, ..., NotImplementedError) or contains TODO/FIXME markers.",
+        description="Function body is an unimplemented stub (pass, ..., NotImplementedError) or contains TODO/FIXME comments.",
     ),
     "SG003": RuleMeta(
         rule_id="SG003",
@@ -59,6 +59,13 @@ RULES: dict[str, RuleMeta] = {
         default_severity=Severity.CRITICAL,
         category="Agent & Supply-Chain Security",
         description="File contains Trojan Source bidi overrides, zero-width characters, or agent instruction-hijack comments.",
+    ),
+    "SG007": RuleMeta(
+        rule_id="SG007",
+        title="Unsafe AI Security Shortcut",
+        default_severity=Severity.HIGH,
+        category="Insecure Defaults",
+        description="Code disables TLS verification (verify=False), uses shell=True, unsafe yaml.load(), or binds 0.0.0.0.",
     ),
 }
 

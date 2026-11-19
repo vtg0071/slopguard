@@ -1,14 +1,21 @@
-"""SG004: Test Cheating & Zero-Assertion Test Detector."""
+"""SG004: Test Cheating & Zero-Assertion Test Detector (Python + JS/TS)."""
 
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from slopguard.models import Finding, Severity
 
 ASSERTION_ATTR_PREFIXES = ("assert", "fail")
 ASSERTION_CALL_NAMES = {"assert", "expect", "should", "raises", "warns"}
+
+_JS_TEST_BLOCK_RE = re.compile(
+    r"""(?:^|\n)\s*(?:it|test)\s*(?:\.(skip|only))?\s*\(\s*(['"`])(.+?)\2\s*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{""",
+    re.MULTILINE,
+)
+_JS_ASSERT_RE = re.compile(r"\b(?:expect|assert)\s*\(|\bshould\.")
 
 
 def _is_test_file(file_path: Path) -> bool:
@@ -17,7 +24,9 @@ def _is_test_file(file_path: Path) -> bool:
         name.startswith("test_")
         or name.endswith("_test.py")
         or name.endswith(".test.ts")
+        or name.endswith(".test.tsx")
         or name.endswith(".test.js")
+        or name.endswith(".test.jsx")
         or name.endswith(".spec.ts")
         or name.endswith(".spec.js")
     )
@@ -68,17 +77,74 @@ def _is_tautology_assert(node: ast.Assert) -> bool:
     return False
 
 
+def _extract_brace_block(content: str, open_brace_idx: int) -> str:
+    depth = 0
+    for idx in range(open_brace_idx, len(content)):
+        ch = content[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return content[open_brace_idx : idx + 1]
+    return content[open_brace_idx:]
+
+
 def detect_test_cheating(file_path: Path, rel_path: str, content: str) -> list[Finding]:
     findings: list[Finding] = []
-    if not _is_test_file(file_path) or file_path.suffix.lower() != ".py":
+    if not _is_test_file(file_path):
+        return findings
+
+    suffix = file_path.suffix.lower()
+    lines = content.splitlines()
+
+    if suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        for m in _JS_TEST_BLOCK_RE.finditer(content):
+            modifier = m.group(1)
+            test_name = m.group(3)
+            line_no = content.count("\n", 0, m.start(3)) + 1
+            snippet = lines[line_no - 1].strip() if 0 < line_no <= len(lines) else ""
+            if modifier == "skip":
+                findings.append(
+                    Finding(
+                        rule_id="SG004",
+                        title="Test Cheating / Zero-Assertion Test",
+                        severity=Severity.MEDIUM,
+                        category="Test Integrity",
+                        file_path=rel_path,
+                        line=line_no,
+                        column=1,
+                        message=f"JS/TS test '{test_name}' is skipped via .{modifier}.",
+                        snippet=snippet,
+                        suggestion=f"Re-enable '{test_name}' or document why it is skipped.",
+                    )
+                )
+            else:
+                block = _extract_brace_block(content, m.end() - 1)
+                if not _JS_ASSERT_RE.search(block):
+                    findings.append(
+                        Finding(
+                            rule_id="SG004",
+                            title="Test Cheating / Zero-Assertion Test",
+                            severity=Severity.MEDIUM,
+                            category="Test Integrity",
+                            file_path=rel_path,
+                            line=line_no,
+                            column=1,
+                            message=f"JS/TS test '{test_name}' executes without any expect()/assert() calls.",
+                            snippet=snippet,
+                            suggestion=f"Add meaningful assertions verifying behavior in '{test_name}'.",
+                        )
+                    )
+        return findings
+
+    if suffix != ".py":
         return findings
 
     try:
         tree = ast.parse(content, filename=rel_path)
     except SyntaxError:
         return findings
-
-    lines = content.splitlines()
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):

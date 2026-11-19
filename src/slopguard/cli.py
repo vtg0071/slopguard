@@ -14,6 +14,8 @@ from slopguard.formatters import format_json, format_markdown, format_sarif, for
 from slopguard.models import Severity
 from slopguard.scanner import scan_path
 
+_CLAUDE_HOOK_MAX_CHARS = 8000
+
 DEFAULT_CONFIG_TEMPLATE = """# SlopGuard configuration
 fail-on = "high"
 
@@ -57,6 +59,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_check.add_argument("--diff", dest="diff_ref", default=None, help="Only report findings on lines changed vs git ref (e.g. origin/main).")
     p_check.add_argument("--staged", action="store_true", help="Only report findings on staged git diff lines.")
+    p_check.add_argument("--verify-registry", action="store_true", help="Verify declared PyPI/npm packages against live registries.")
     p_check.add_argument("--no-color", action="store_true", help="Disable ANSI colors.")
     p_check.add_argument("--output", "-o", help="Write output to a file instead of stdout.")
 
@@ -75,6 +78,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["claude"],
         default=None,
         help="Install SlopGuard PostToolUse hook into .claude/settings.json.",
+    )
+    p_hook.add_argument(
+        "--local",
+        action="store_true",
+        help="With --install claude, write to .claude/settings.local.json instead of settings.json.",
     )
 
     return parser
@@ -95,7 +103,13 @@ def _cmd_check(args: argparse.Namespace) -> int:
         return 2
 
     cfg = load_config(_find_root(target.resolve()))
-    report = scan_path(target, config=cfg, diff_ref=args.diff_ref, staged=args.staged)
+    report = scan_path(
+        target,
+        config=cfg,
+        diff_ref=args.diff_ref,
+        staged=args.staged,
+        verify_registry=args.verify_registry,
+    )
 
     if args.format == "terminal":
         out = format_terminal(report, no_color=args.no_color)
@@ -136,9 +150,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
-def _install_claude_hook(base_dir: Path | None = None) -> int:
+def _install_claude_hook(base_dir: Path | None = None, local: bool = False) -> int:
     root = base_dir or Path.cwd()
-    settings_path = root / ".claude" / "settings.json"
+    filename = "settings.local.json" if local else "settings.json"
+    settings_path = root / ".claude" / filename
     settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     data: dict = {}
@@ -165,7 +180,7 @@ def _install_claude_hook(base_dir: Path | None = None) -> int:
 def _cmd_hook(args: argparse.Namespace) -> int:
     """Claude Code PostToolUse hook: scans edited file and feeds findings back to Claude."""
     if args.install == "claude":
-        return _install_claude_hook()
+        return _install_claude_hook(local=args.local)
 
     raw = sys.stdin.read().strip() if not sys.stdin.isatty() else ""
     file_path = "."
@@ -185,6 +200,8 @@ def _cmd_hook(args: argparse.Namespace) -> int:
     report = scan_path(target, config=cfg)
     if report.has_findings_at_or_above(cfg.fail_on):
         msg = format_markdown(report)
+        if len(msg) > _CLAUDE_HOOK_MAX_CHARS:
+            msg = msg[:_CLAUDE_HOOK_MAX_CHARS] + "\n\n...(truncated for Claude Code hook limit)"
         if args.claude:
             print(json.dumps({"decision": "block", "reason": msg}))
             return 0

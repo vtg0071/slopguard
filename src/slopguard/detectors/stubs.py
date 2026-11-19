@@ -1,9 +1,11 @@
-"""SG002: Placeholder Stub & Unfinished Code Detector."""
+"""SG002: Placeholder Stub & Unfinished Code Detector (tokenize-aware)."""
 
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
 from pathlib import Path
 
 from slopguard.models import Finding, Severity
@@ -57,6 +59,18 @@ def _is_stub_body(stmts: list[ast.stmt]) -> str | None:
     return None
 
 
+def _extract_python_comments(content: str) -> list[tuple[int, int, str]]:
+    comments: list[tuple[int, int, str]] = []
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(content).readline)
+        for tok in tokens:
+            if tok.type == tokenize.COMMENT:
+                comments.append((tok.start[0], tok.start[1] + 1, tok.string))
+    except tokenize.TokenError:
+        pass
+    return comments
+
+
 def detect_stubs(file_path: Path, rel_path: str, content: str) -> list[Finding]:
     findings: list[Finding] = []
     suffix = file_path.suffix.lower()
@@ -68,7 +82,6 @@ def detect_stubs(file_path: Path, rel_path: str, content: str) -> list[Finding]:
         except SyntaxError:
             return findings
 
-        # Skip Protocol classes
         protocol_methods: set[int] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
@@ -104,11 +117,29 @@ def detect_stubs(file_path: Path, rel_path: str, content: str) -> list[Finding]:
                         )
                     )
 
-    # Comment-based TODO/FIXME/PLACEHOLDER markers
-    comment_re = _TODO_RE if suffix == ".py" else _JS_TODO_RE if suffix in {".js", ".jsx", ".ts", ".tsx"} else None
-    if comment_re:
+        for line_no, col_no, comment_text in _extract_python_comments(content):
+            m = _TODO_RE.search(comment_text)
+            if m:
+                tag = m.group(1).upper()
+                detail = m.group(2).strip()
+                findings.append(
+                    Finding(
+                        rule_id="SG002",
+                        title="Placeholder Stub or Unfinished Code",
+                        severity=Severity.LOW,
+                        category="Incomplete Implementation",
+                        file_path=rel_path,
+                        line=line_no,
+                        column=col_no,
+                        message=f"Unresolved {tag} marker left in code{': ' + detail if detail else '.'}",
+                        snippet=lines[line_no - 1].strip() if 0 < line_no <= len(lines) else comment_text,
+                        suggestion="Complete the pending implementation or track it as an issue before merging.",
+                    )
+                )
+
+    elif suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
         for idx, line in enumerate(lines, start=1):
-            m = comment_re.search(line)
+            m = _JS_TODO_RE.search(line)
             if m:
                 tag = m.group(1).upper()
                 detail = m.group(2).strip()

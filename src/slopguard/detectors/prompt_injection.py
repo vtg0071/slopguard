@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import re
+import tokenize
 from pathlib import Path
 
 from slopguard.models import Finding, Severity
@@ -22,10 +24,26 @@ PROMPT_INJECTION_RE = re.compile(
 )
 
 
+def _iter_scannable_text_segments(file_path: Path, content: str) -> list[tuple[int, int, str]]:
+    """For Python files, scan only real comments (avoiding string literal false positives)."""
+    if file_path.suffix.lower() != ".py":
+        return [(idx, 1, line) for idx, line in enumerate(content.splitlines(), start=1)]
+
+    segments: list[tuple[int, int, str]] = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(content).readline):
+            if tok.type == tokenize.COMMENT:
+                segments.append((tok.start[0], tok.start[1] + 1, tok.string))
+    except tokenize.TokenError:
+        return [(idx, 1, line) for idx, line in enumerate(content.splitlines(), start=1)]
+    return segments
+
+
 def detect_prompt_injection(file_path: Path, rel_path: str, content: str) -> list[Finding]:
     findings: list[Finding] = []
     lines = content.splitlines()
 
+    # 1. Hidden Unicode / Trojan Source characters across all lines
     for idx, line in enumerate(lines, start=1):
         for col, ch in enumerate(line, start=1):
             if ch in BIDI_CHARS:
@@ -61,7 +79,9 @@ def detect_prompt_injection(file_path: Path, rel_path: str, content: str) -> lis
                 )
                 break
 
-        m = PROMPT_INJECTION_RE.search(line)
+    # 2. Prompt injection phrases in comments / docs
+    for line_no, base_col, seg_text in _iter_scannable_text_segments(file_path, content):
+        m = PROMPT_INJECTION_RE.search(seg_text)
         if m:
             findings.append(
                 Finding(
@@ -70,10 +90,10 @@ def detect_prompt_injection(file_path: Path, rel_path: str, content: str) -> lis
                     severity=Severity.CRITICAL,
                     category="Agent & Supply-Chain Security",
                     file_path=rel_path,
-                    line=idx,
-                    column=m.start() + 1,
+                    line=line_no,
+                    column=base_col + m.start(),
                     message=f"Suspicious agent prompt-injection pattern: '{m.group(0)}'.",
-                    snippet=line.strip(),
+                    snippet=lines[line_no - 1].strip() if 0 < line_no <= len(lines) else seg_text.strip(),
                     suggestion="Remove instruction-hijack text targeting AI coding assistants.",
                 )
             )
