@@ -220,7 +220,7 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
             rc = _install_claude_skill(Path(tmp))
             self.assertEqual(rc, 0)
             skill_md = (Path(tmp) / ".claude" / "skills" / "slopguard" / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("Research Official, Safe Practices First", skill_md)
+            self.assertIn("Research Official & Safe Sources First", skill_md)
             self.assertIn("slopguard check", skill_md)
 
     def test_staged_git_diff_filtering(self):
