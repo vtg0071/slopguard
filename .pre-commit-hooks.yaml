@@ -1,0 +1,7 @@
+- id: slopguard
+  name: SlopGuard
+  description: Catch AI coding slop (phantom imports, stubs, silent failures, test cheating, secrets, prompt injections)
+  entry: slopguard check
+  language: python
+  types_or: [python, javascript, ts, tsx, jsx, markdown]
+  pass_filenames: false

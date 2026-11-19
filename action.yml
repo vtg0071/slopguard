@@ -1,0 +1,36 @@
+name: "SlopGuard"
+description: "Catch AI coding slop before it hits main: phantom imports, stubs, silent failures, test cheating, secrets, and prompt injections."
+author: "SlopGuard Contributors"
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  target:
+    description: "Path to scan"
+    required: false
+    default: "."
+  fail-on:
+    description: "Minimum severity to fail CI (critical, high, medium, low, none)"
+    required: false
+    default: "high"
+  sarif-file:
+    description: "Optional path to write SARIF output"
+    required: false
+    default: "slopguard.sarif"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Install SlopGuard
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+    - name: Run SlopGuard
+      shell: bash
+      run: |
+        slopguard check "${{ inputs.target }}" --format sarif --output "${{ inputs.sarif-file }}" --fail-on none
+        slopguard check "${{ inputs.target }}" --fail-on "${{ inputs.fail-on }}"
