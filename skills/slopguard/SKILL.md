@@ -1,6 +1,6 @@
 ---
 name: slopguard
-description: Enforce zero-slop engineering by researching official primary sources safely before coding, avoiding hallucinated packages and structural bloat, and gating every change with `slopguard check`.
+description: Enforce zero-slop engineering by researching official primary sources safely before coding, reusing existing codebase helpers, avoiding weak crypto and structural bloat, and gating every change with `slopguard check`.
 ---
 
 # SlopGuard Agent Workflow
@@ -15,10 +15,11 @@ Before writing new code, installing a package, or adopting a framework pattern:
 - **Check current security defaults:** Verify the latest recommended defaults for TLS verification, safe deserialization, parameterized queries, and minimal permissions.
 
 ## 2. Implement Cleanly (Zero Slop)
-- Write small, focused functions (<= 80 lines, <= 4 levels of nesting) with no mutable default arguments, unreachable code, or copy-pasted duplicate bodies.
-- Never leave `pass`, `...`, `NotImplementedError`, or unresolved `TODO`/`FIXME` stubs in production paths.
-- Handle errors explicitly—never write bare `except:`, `except Exception: pass`, or empty `catch {}` blocks.
-- Write real tests with meaningful assertions (never `assert True` or zero-assertion tests).
+- **Reuse before rewriting:** Search the existing codebase for shared helpers, types, and utilities before creating new functions—avoid copy-paste duplication and isolated one-off wrappers.
+- **Keep functions small and flat:** Write focused functions (<= 80 lines, <= 4 levels of nesting) with no mutable default arguments, unreachable dead code, or duplicate function bodies.
+- **Validate inputs & use strong crypto:** Validate untrusted inputs at boundaries, never use `md5`/`sha1` for security or `verify=False`/`shell=True`/`yaml.load()`, and never rely on prompting alone without static verification.
+- **No unfinished stubs or silent errors:** Never leave `pass`, `...`, `NotImplementedError`, or unresolved `TODO`/`FIXME` stubs in production paths, and never write bare `except:`, `except Exception: pass`, or empty `catch {}` blocks.
+- **Write real tests:** Every test must verify real behavior with meaningful assertions (never `assert True` or zero-assertion tests).
 
 ## 3. Gate with SlopGuard Before Finishing
 Run SlopGuard on your changes before concluding:

@@ -18,7 +18,7 @@ Zero-dependency CLI, GitHub Action, and Claude Code hook that detects **hallucin
 
 ## Why This Exists
 
-Peer-reviewed research at [USENIX Security 2025](https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen) found that **5.2%** of packages suggested by commercial LLMs and **21.7%** by open-source models did not exist—creating a real supply-chain attack surface (**slopsquatting**). Alongside fake packages, coding agents routinely leave behind `except Exception: pass`, `NotImplementedError` stubs, `verify=False` shortcuts, and zero-assertion tests.
+Peer-reviewed research at [USENIX Security 2025](https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen) found that **5.2%** of packages suggested by commercial LLMs and **21.7%** by open-source models did not exist—creating a real supply-chain attack surface (**slopsquatting**). Meanwhile, [GitClear's 2026 AI Code Quality study](https://www.gitclear.com/the_ai_code_quality_maintainability_gap) across 600M+ commits found an **81% rise in code block duplication** and a **47% rise in error-masking constructs**, while [empirical LLM security evaluations](https://arxiv.org/pdf/2605.24298) show prompt engineering alone does not reliably eliminate weak crypto or input-validation bugs.
 
 ## See It in Action
 

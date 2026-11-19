@@ -169,10 +169,10 @@ class TestDetectors(unittest.TestCase):
             "requests.get('https://example.com', verify=False)\n"
             "subprocess.run('ls', shell=True)\n"
             "yaml.load('a: 1')\n"
-            "app.run(host='0.0.0.0')\n"
+            "app.run(host='0.0.0.0')\nhashlib.md5(b'abc')\n"
         )
         findings = detect_security_shortcuts(Path("sec.py"), "sec.py", code)
-        self.assertEqual(len(findings), 4)
+        self.assertEqual(len(findings), 5)
         self.assertTrue(all(f.rule_id == "SG007" for f in findings))
 
 
