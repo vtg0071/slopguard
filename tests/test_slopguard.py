@@ -15,7 +15,7 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from slopguard.cli import _install_claude_hook, main as cli_main
+from slopguard.cli import _install_claude_hook, _install_claude_skill, main as cli_main
 from slopguard.config import SlopGuardConfig, _parse_simple_toml_fallback
 from slopguard.detectors.code_quality import detect_code_quality
 from slopguard.detectors.phantom_imports import detect_phantom_imports
@@ -214,6 +214,14 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
             local = json.loads((Path(tmp) / ".claude" / "settings.local.json").read_text())
             self.assertEqual(team["hooks"]["PostToolUse"][0]["hooks"][0]["command"], "slopguard hook --claude")
             self.assertEqual(local["hooks"]["PostToolUse"][0]["hooks"][0]["command"], "slopguard hook --claude")
+
+    def test_install_claude_skill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rc = _install_claude_skill(Path(tmp))
+            self.assertEqual(rc, 0)
+            skill_md = (Path(tmp) / ".claude" / "skills" / "slopguard" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("Research Most Recent Practices First", skill_md)
+            self.assertIn("slopguard check", skill_md)
 
     def test_staged_git_diff_filtering(self):
         with tempfile.TemporaryDirectory() as tmp:

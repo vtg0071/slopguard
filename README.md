@@ -96,7 +96,15 @@ slopguard hook --install claude
 
 Every time Claude Code edits or writes a file, `slopguard hook --claude` scans it in milliseconds and feeds any issues back to the agent before you even review the diff.
 
-### 3. GitHub Action
+### 3. Agent Skill (`SKILL.md` — Research-First + Auto-Gate)
+
+Install the bundled `skills/slopguard/SKILL.md` so your coding agent researches the **most recent official practices** before writing code and gates its own output with `slopguard check`:
+
+```bash
+slopguard skill --install claude
+```
+
+### 4. GitHub Action
 
 ```yaml
 name: SlopGuard
@@ -113,7 +121,7 @@ jobs:
           fail-on: "high"
 ```
 
-### 4. Pre-Commit Hook
+### 5. Pre-Commit Hook
 
 ```yaml
 repos:

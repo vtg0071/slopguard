@@ -85,6 +85,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="With --install claude, write to .claude/settings.local.json instead of settings.json.",
     )
 
+    # skill
+    p_skill = sub.add_parser("skill", help="Install the SlopGuard research-first agent SKILL.md.")
+    p_skill.add_argument(
+        "--install",
+        choices=["claude"],
+        default="claude",
+        help="Install SKILL.md into .claude/skills/slopguard/SKILL.md.",
+    )
+
     return parser
 
 
@@ -169,6 +178,20 @@ def _install_claude_hook(base_dir: Path | None = None, local: bool = False) -> i
     return 0
 
 
+def _install_claude_skill(base_dir: Path | None = None) -> int:
+    root = base_dir or Path.cwd()
+    dest = root / ".claude" / "skills" / "slopguard" / "SKILL.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    src_skill = Path(__file__).resolve().parents[2] / "skills" / "slopguard" / "SKILL.md"
+    if src_skill.is_file():
+        content = src_skill.read_text(encoding="utf-8")
+    else:
+        content = "---\nname: slopguard\ndescription: Research most recent practices first and gate changes with slopguard check.\n---\n"
+    dest.write_text(content, encoding="utf-8")
+    print(f"Installed SlopGuard skill in {dest}")
+    return 0
+
+
 def _cmd_hook(args: argparse.Namespace) -> int:
     """Claude Code PostToolUse hook: scans edited file and feeds findings back to Claude."""
     if args.install == "claude":
@@ -216,4 +239,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init(args)
     if args.command == "hook":
         return _cmd_hook(args)
+    if args.command == "skill":
+        return _install_claude_skill()
     return 0
