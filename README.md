@@ -48,6 +48,7 @@ Traditional linters check formatting and syntax. Security scanners check known C
 | **Hardcoded AI/Cloud API Keys** (`sk-ant-`, `sk-proj-`, `ghp_`, `AKIA`) | — | — | Yes | **SG005** |
 | **Trojan Source Bidi & Agent Prompt Injections** | — | — | — | **SG006** |
 | **Unsafe Security Shortcuts** (`verify=False`, `shell=True`, `yaml.load`) | — | Partial | — | **SG007** |
+| **Structural Code-Quality Slop** (mutable defaults, dead code, deep nesting, duplicate bodies) | Partial | — | — | **SG008** |
 | **Zero-Dependency + Claude Code `PostToolUse` Hook** | — | — | — | **Built-in** |
 
 ---

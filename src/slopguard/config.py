@@ -71,13 +71,15 @@ def _strip_toml_comment(line: str) -> str:
             escaped = True
             continue
         if ch in ('"', "'"):
-            if in_quote is None:
-                in_quote = ch
-            elif in_quote == ch:
-                in_quote = None
+            in_quote = ch if in_quote is None else None if in_quote == ch else in_quote
         elif ch == "#" and in_quote is None:
             return line[:idx]
     return line
+
+
+def _extract_array_items(raw_array: str) -> list[str]:
+    inner = raw_array[raw_array.find("[") + 1 : raw_array.rfind("]")]
+    return [m.group(1) for m in re.finditer(r"""['"]([^'"]*)['"]""", inner)]
 
 
 def _parse_simple_toml_fallback(text: str) -> dict[str, Any]:
@@ -91,44 +93,27 @@ def _parse_simple_toml_fallback(text: str) -> dict[str, Any]:
         line = _strip_toml_comment(raw_line).strip()
         if not line:
             continue
-
         if pending_key is not None:
             pending_buf.append(line)
             if "]" in line:
-                joined = " ".join(pending_buf)
-                inner = joined[joined.find("[") + 1 : joined.rfind("]")]
-                section[pending_key] = [
-                    m.group(1)
-                    for m in re.finditer(r"""['"]([^'"]*)['"]""", inner)
-                ]
-                pending_key = None
-                pending_buf = []
+                section[pending_key] = _extract_array_items(" ".join(pending_buf))
+                pending_key, pending_buf = None, []
             continue
-
         if line.startswith("[") and line.endswith("]"):
-            sec_name = line[1:-1].strip()
             cur = data
-            for part in sec_name.split("."):
+            for part in line[1:-1].strip().split("."):
                 cur = cur.setdefault(part, {})
             section = cur
             continue
-
-        if "=" in line:
-            k, v = line.split("=", 1)
-            k = k.strip()
-            v = v.strip()
-            if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-                section[k] = v[1:-1]
-            elif v.startswith("["):
-                if "]" in v:
-                    inner = v[1 : v.rfind("]")]
-                    section[k] = [
-                        m.group(1)
-                        for m in re.finditer(r"""['"]([^'"]*)['"]""", inner)
-                    ]
-                else:
-                    pending_key = k
-                    pending_buf = [v]
+        if "=" not in line:
+            continue
+        k, v = (x.strip() for x in line.split("=", 1))
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            section[k] = v[1:-1]
+        elif v.startswith("[") and "]" in v:
+            section[k] = _extract_array_items(v)
+        elif v.startswith("["):
+            pending_key, pending_buf = k, [v]
     return data
 
 
@@ -137,6 +122,15 @@ def _read_toml(path: Path) -> dict[str, Any]:
     if tomllib is not None:
         return tomllib.loads(raw)
     return _parse_simple_toml_fallback(raw)
+
+
+def find_project_root(target: Path) -> Path:
+    """Walk upward from target to find the nearest repository/package root."""
+    start = target if target.is_dir() else target.parent
+    for candidate in [start, *start.parents]:
+        if any((candidate / m).exists() for m in ("pyproject.toml", "package.json", "requirements.txt", ".git")):
+            return candidate
+    return start
 
 
 def load_config(root: Path) -> SlopGuardConfig:
@@ -148,8 +142,7 @@ def load_config(root: Path) -> SlopGuardConfig:
     if slopguard_toml.is_file():
         raw_section = _read_toml(slopguard_toml)
     elif pyproject_toml.is_file():
-        parsed = _read_toml(pyproject_toml)
-        raw_section = parsed.get("tool", {}).get("slopguard", {})
+        raw_section = _read_toml(pyproject_toml).get("tool", {}).get("slopguard", {})
 
     if not raw_section:
         return cfg
@@ -159,24 +152,14 @@ def load_config(root: Path) -> SlopGuardConfig:
         if val in {s.value for s in Severity}:
             cfg.fail_on = Severity(val)
 
-    if "ignore" in raw_section and isinstance(raw_section["ignore"], list):
+    if isinstance(raw_section.get("ignore"), list):
         cfg.ignore = list(DEFAULT_IGNORES) + [str(x) for x in raw_section["ignore"]]
 
-    if "disable" in raw_section and isinstance(raw_section["disable"], list):
+    if isinstance(raw_section.get("disable"), list):
         cfg.disabled_rules = {str(x).upper() for x in raw_section["disable"]}
 
-    if "extra-dependencies" in raw_section or "extra_dependencies" in raw_section:
-        deps = raw_section.get("extra-dependencies", raw_section.get("extra_dependencies", []))
-        if isinstance(deps, list):
-            cfg.extra_dependencies = {str(x).lower().replace("-", "_") for x in deps}
+    deps = raw_section.get("extra-dependencies", raw_section.get("extra_dependencies"))
+    if isinstance(deps, list):
+        cfg.extra_dependencies = {str(x).lower().replace("-", "_") for x in deps}
 
     return cfg
-
-
-def find_project_root(target: Path) -> Path:
-    """Walk upward from target to find the nearest repository/package root."""
-    start = target if target.is_dir() else target.parent
-    for candidate in [start, *start.parents]:
-        if any((candidate / m).exists() for m in ("pyproject.toml", "package.json", "requirements.txt", ".git")):
-            return candidate
-    return start

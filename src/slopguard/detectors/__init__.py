@@ -66,6 +66,12 @@ RULES: dict[str, RuleMeta] = {
         default_severity=Severity.HIGH,
         category="Insecure Defaults",
         description="Code disables TLS verification (verify=False), uses shell=True, unsafe yaml.load(), or binds 0.0.0.0.",
+    ),    "SG008": RuleMeta(
+        rule_id="SG008",
+        title="Structural / Code-Quality Slop",
+        default_severity=Severity.MEDIUM,
+        category="Code Quality",
+        description="Detects mutable default arguments, unreachable code, deep nesting, oversized functions, and duplicate function bodies.",
     ),
 }
 

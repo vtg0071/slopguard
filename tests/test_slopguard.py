@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from slopguard.cli import _install_claude_hook, main as cli_main
 from slopguard.config import SlopGuardConfig, _parse_simple_toml_fallback
+from slopguard.detectors.code_quality import detect_code_quality
 from slopguard.detectors.phantom_imports import detect_phantom_imports
 from slopguard.detectors.prompt_injection import detect_prompt_injection
 from slopguard.detectors.registry_check import verify_manifest_dependencies
@@ -173,6 +174,23 @@ class TestDetectors(unittest.TestCase):
         findings = detect_security_shortcuts(Path("sec.py"), "sec.py", code)
         self.assertEqual(len(findings), 4)
         self.assertTrue(all(f.rule_id == "SG007" for f in findings))
+
+
+    def test_sg008_code_quality_slop(self):
+        code = (
+            "def bad_default(items=[]):\n"
+            "    return items\n"
+            "def dead_code():\n"
+            "    return 1\n"
+            "    x = 2\n"
+            "def dup_a(n):\n"
+            "    a = n + 1\n    b = a * 2\n    c = b - 3\n    d = c + 4\n    return d\n"
+            "def dup_b(n):\n"
+            "    a = n + 1\n    b = a * 2\n    c = b - 3\n    d = c + 4\n    return d\n"
+        )
+        findings = detect_code_quality(Path("qual.py"), "qual.py", code)
+        self.assertEqual(len(findings), 3)
+        self.assertTrue(all(f.rule_id == "SG008" for f in findings))
 
 
 class TestConfigScannerAndProductionE2E(unittest.TestCase):
