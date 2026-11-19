@@ -76,6 +76,11 @@ slopguard check --staged
 # Also verify declared PyPI/npm packages against live registries (404 / <30d old)
 slopguard check . --verify-registry
 
+# Auto-fix safe mechanical slop (hidden Unicode, yaml.load) & adopt via baseline
+slopguard check . --fix
+slopguard check . --write-baseline .slopguard-baseline.json
+slopguard check . --baseline .slopguard-baseline.json
+
 # Output JSON, GitHub PR Markdown, or SARIF v2.1.0
 slopguard check . --format json
 slopguard check . --format markdown
@@ -101,7 +106,10 @@ Every time Claude Code edits or writes a file, `slopguard hook --claude` scans i
 Install the bundled `skills/slopguard/SKILL.md` so your coding agent researches the **most recent official practices** before writing code and gates its own output with `slopguard check`:
 
 ```bash
-slopguard skill --install claude
+slopguard skill --install all  # installs for Claude Code & Cursor
+
+# Or run as a zero-dependency stdio MCP server for any agent
+slopguard mcp
 ```
 
 ### 4. GitHub Action

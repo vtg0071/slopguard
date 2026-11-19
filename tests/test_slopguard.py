@@ -16,6 +16,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from slopguard.cli import _install_claude_hook, _install_claude_skill, main as cli_main
+from slopguard.fixer import fix_path
+from slopguard.mcp_server import handle_mcp_request
+from slopguard.scanner import write_baseline
 from slopguard.config import SlopGuardConfig, _parse_simple_toml_fallback
 from slopguard.detectors.code_quality import detect_code_quality
 from slopguard.detectors.phantom_imports import detect_phantom_imports
@@ -215,6 +218,44 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
             self.assertEqual(team["hooks"]["PostToolUse"][0]["hooks"][0]["command"], "slopguard hook --claude")
             self.assertEqual(local["hooks"]["PostToolUse"][0]["hooks"][0]["command"], "slopguard hook --claude")
 
+    def test_mcp_server_protocol(self):
+        init_resp = handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        self.assertEqual(init_resp["result"]["serverInfo"]["name"], "slopguard")
+        tools_resp = handle_mcp_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        names = {t["name"] for t in tools_resp["result"]["tools"]}
+        self.assertEqual(names, {"slopguard_check", "slopguard_rules"})
+        call_resp = handle_mcp_request({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "slopguard_rules", "arguments": {}},
+        })
+        self.assertIn("SG008", call_resp["result"]["content"][0]["text"])
+
+    def test_auto_fixer_and_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad = root / "bad.py"
+            bad.write_text("import yaml\ndata = yaml.load('a: 1')\nx = '" + chr(0x200B) + "hello'\n", encoding="utf-8")
+            changes = fix_path(root)
+            self.assertEqual(len(changes), 1)
+            fixed_txt = bad.read_text(encoding="utf-8")
+            self.assertIn("yaml.safe_load(", fixed_txt)
+            self.assertNotIn(chr(0x200B), fixed_txt)
+
+            stub = root / "stub.py"
+            stub.write_text("def later():\n    pass\n", encoding="utf-8")
+            base_file = root / ".slopguard-baseline.json"
+            write_baseline(scan_path(root), base_file)
+            filtered = scan_path(root, baseline_path=base_file)
+            self.assertEqual(filtered.findings, [])
+
+    def test_inline_ignore_with_trailing_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ok.py").write_text("def noop():  # slopguard: ignore SG002 -- intentional\n    pass\n", encoding="utf-8")
+            self.assertEqual(scan_path(root).findings, [])
+
     def test_install_claude_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             rc = _install_claude_skill(Path(tmp))
@@ -222,6 +263,7 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
             skill_md = (Path(tmp) / ".claude" / "skills" / "slopguard" / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("Research Official & Safe Sources First", skill_md)
             self.assertIn("slopguard check", skill_md)
+            self.assertIn("## Gotchas", skill_md)
 
     def test_staged_git_diff_filtering(self):
         with tempfile.TemporaryDirectory() as tmp:

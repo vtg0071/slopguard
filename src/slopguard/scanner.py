@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import io
+import json
 import re
 import subprocess
 import time
@@ -31,7 +32,8 @@ SUPPORTED_EXTENSIONS = {
 }
 CODE_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 
-_INLINE_IGNORE_RE = re.compile(r"(?:#|//)\s*slopguard:\s*ignore(?:\s+([A-Z0-9,\s]+))?", re.IGNORECASE)
+_INLINE_IGNORE_RE = re.compile(r"(?:#|//)\s*slopguard:\s*ignore\b(.*)$", re.IGNORECASE)
+_RULE_TOKEN_RE = re.compile(r"\bSG\d{3}\b", re.IGNORECASE)
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
@@ -41,10 +43,10 @@ def _is_line_suppressed(lines: list[str], line_no: int, rule_id: str) -> bool:
     m = _INLINE_IGNORE_RE.search(lines[line_no - 1])
     if not m:
         return False
-    rules_raw = m.group(1)
-    if not rules_raw or not rules_raw.strip():
+    tokens = _RULE_TOKEN_RE.findall(m.group(1))
+    if not tokens:
         return True
-    return rule_id.upper() in {r.strip().upper() for r in rules_raw.split(",") if r.strip()}
+    return rule_id.upper() in {t.upper() for t in tokens}
 
 
 def _parse_diff_hunks(diff_text: str) -> dict[str, set[int]]:
@@ -68,8 +70,30 @@ def _parse_diff_hunks(diff_text: str) -> dict[str, set[int]]:
     return changed
 
 
+def _add_untracked_lines(root: Path, changed: dict[str, set[int]]) -> None:
+    try:
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if untracked.returncode != 0:
+        return
+    for rel_file in untracked.stdout.splitlines():
+        rel_clean = rel_file.strip()
+        fpath = root / rel_clean
+        if rel_clean and fpath.is_file():
+            line_count = len(fpath.read_text(encoding="utf-8", errors="replace").splitlines())
+            changed[rel_clean] = set(range(1, max(2, line_count + 1)))
+
+
 def _get_git_changed_lines(root: Path, diff_ref: str | None = None, staged: bool = False) -> dict[str, set[int]]:
-    """Return {rel_posix_path: {added_or_modified_line_numbers}} from git diff."""
+    """Return {rel_posix_path: {added_or_modified_line_numbers}} from git diff (+ untracked on --diff)."""
     if not staged and not diff_ref:
         return {}
     cmd = ["git", "diff", "--unified=0", "--no-color", "--cached"] if staged else ["git", "diff", "--unified=0", "--no-color", str(diff_ref)]
@@ -80,7 +104,10 @@ def _get_git_changed_lines(root: Path, diff_ref: str | None = None, staged: bool
     if proc.returncode != 0:
         return {}
 
-    return _parse_diff_hunks(proc.stdout)
+    changed = _parse_diff_hunks(proc.stdout)
+    if not staged and diff_ref:
+        _add_untracked_lines(root, changed)
+    return changed
 
 
 def _is_ignored_file(p: Path, target: Path, root: Path, cfg: SlopGuardConfig) -> bool:
@@ -88,14 +115,14 @@ def _is_ignored_file(p: Path, target: Path, root: Path, cfg: SlopGuardConfig) ->
         rel = p.relative_to(root).as_posix()
     except ValueError:
         rel = p.as_posix()
-    if target == root:
-        return cfg.is_ignored(rel)
-    if target.is_dir():
+    if target != root and target.is_dir():
         try:
-            return cfg.is_ignored(p.relative_to(target).as_posix())
+            target_rel = target.relative_to(root).as_posix()
+            if cfg.is_ignored(target_rel):
+                return cfg.is_ignored(p.relative_to(target).as_posix())
         except ValueError:
-            return cfg.is_ignored(rel)
-    return False
+            pass
+    return cfg.is_ignored(rel) if target.is_dir() else False
 
 
 def _iter_target_files(target: Path, cfg: SlopGuardConfig, root: Path) -> list[Path]:
@@ -167,12 +194,33 @@ def _scan_single_file(
     return findings
 
 
+def _finding_key(f: Finding) -> str:
+    return f"{f.rule_id}:{f.file_path}:{f.line}:{f.message}"
+
+
+def filter_baseline(report: ScanReport, baseline_path: Path) -> ScanReport:
+    if not baseline_path.is_file():
+        return report
+    try:
+        known = set(json.loads(baseline_path.read_text(encoding="utf-8")).get("findings", []))
+    except (json.JSONDecodeError, OSError):
+        return report
+    report.findings = [f for f in report.findings if _finding_key(f) not in known]
+    return report
+
+
+def write_baseline(report: ScanReport, baseline_path: Path) -> None:
+    keys = sorted({_finding_key(f) for f in report.findings})
+    baseline_path.write_text(json.dumps({"findings": keys}, indent=2) + "\n", encoding="utf-8")
+
+
 def scan_path(
     target_path: str | Path,
     config: SlopGuardConfig | None = None,
     diff_ref: str | None = None,
     staged: bool = False,
     verify_registry: bool = False,
+    baseline_path: Path | None = None,
 ) -> ScanReport:
     t0 = time.perf_counter()
     target = Path(target_path).resolve()
@@ -206,10 +254,11 @@ def scan_path(
                 all_findings.append(finding)
 
     all_findings.sort(key=lambda f: (-f.severity.rank, f.file_path, f.line, f.rule_id))
-    return ScanReport(
+    report = ScanReport(
         target=str(target_path),
         files_scanned=scanned_count,
         duration_ms=(time.perf_counter() - t0) * 1000.0,
         findings=all_findings,
         declared_dependencies=declared_deps,
     )
+    return filter_baseline(report, baseline_path) if baseline_path else report

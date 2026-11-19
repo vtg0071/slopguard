@@ -8,7 +8,7 @@ from pathlib import Path
 from slopguard.models import Finding, Severity
 
 _TERMINATORS = (ast.Return, ast.Raise, ast.Break, ast.Continue)
-_NESTING_NODES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith)
+_NESTING_NODES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try)
 _MAX_NESTING_DEPTH = 4
 _MAX_FUNC_LINES = 80
 

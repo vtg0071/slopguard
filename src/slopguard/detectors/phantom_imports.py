@@ -180,7 +180,11 @@ def _collect_guarded_import_lines(tree: ast.AST) -> set[int]:
     guarded: set[int] = set()
     for node in ast.walk(tree):
         is_import_try = isinstance(node, ast.Try) and any(
-            isinstance(h.type, ast.Name) and h.type.id in {"ImportError", "ModuleNotFoundError"}
+            (isinstance(h.type, ast.Name) and h.type.id in {"ImportError", "ModuleNotFoundError"})
+            or (
+                isinstance(h.type, ast.Tuple)
+                and any(isinstance(el, ast.Name) and el.id in {"ImportError", "ModuleNotFoundError"} for el in h.type.elts)
+            )
             for h in node.handlers
         )
         if is_import_try or (isinstance(node, ast.If) and _is_type_checking_guard(node)):

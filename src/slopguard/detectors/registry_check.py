@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -128,10 +130,8 @@ def _registry_finding(
     return None
 
 
-def verify_manifest_dependencies(root: Path, cache: dict[str, tuple[str, int | None]]) -> list[Finding]:
-    """Verify declared packages in requirements*.txt and package.json against live registries."""
-    findings: list[Finding] = []
-
+def _collect_req_targets(root: Path) -> list[tuple[str, str, str, int, str]]:
+    targets: list[tuple[str, str, str, int, str]] = []
     for req_file in sorted(root.glob("requirements*.txt")):
         if not req_file.is_file():
             continue
@@ -140,31 +140,51 @@ def verify_manifest_dependencies(root: Path, cache: dict[str, tuple[str, int | N
             line = raw.split("#", 1)[0].strip()
             if not line or line.startswith("-"):
                 continue
-            pkg = line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].split("[")[0].strip()
-            if not pkg:
-                continue
-            status, age_days = verify_pypi_package(pkg, cache)
-            finding = _registry_finding("PyPI", pkg, status, age_days, rel, idx, raw.strip())
-            if finding:
-                findings.append(finding)
+            pkg = re.split(r"[<>=!~\[;\s]", line, maxsplit=1)[0].strip()
+            if pkg:
+                targets.append(("PyPI", pkg, rel, idx, raw.strip()))
+    return targets
 
+
+def _collect_manifest_targets(root: Path) -> list[tuple[str, str, str, int, str]]:
+    """Return list of (ecosystem, pkg, rel_path, line, snippet)."""
+    targets = _collect_req_targets(root)
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            import tomllib
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8", errors="ignore"))
+            for item in data.get("project", {}).get("dependencies", []):
+                pkg = re.split(r"[<>=!~\[;\s]", str(item), maxsplit=1)[0].strip()
+                if pkg:
+                    targets.append(("PyPI", pkg, "pyproject.toml", 1, str(item)))
+        except (ImportError, ValueError, OSError):
+            pass
     pkg_json = root / "package.json"
     if not pkg_json.is_file():
-        return findings
-
+        return targets
     try:
         data = json.loads(pkg_json.read_text(encoding="utf-8", errors="ignore"))
     except (json.JSONDecodeError, OSError):
-        return findings
-
+        return targets
     for sec in ("dependencies", "devDependencies"):
         sec_val = data.get(sec)
-        if not isinstance(sec_val, dict):
-            continue
-        for pkg in sec_val:
-            status, age_days = verify_npm_package(pkg, cache)
-            finding = _registry_finding("npm", pkg, status, age_days, "package.json", 1, f'"{pkg}"')
-            if finding:
-                findings.append(finding)
+        if isinstance(sec_val, dict):
+            targets.extend(("npm", pkg, "package.json", 1, f'"{pkg}"') for pkg in sec_val)
+    return targets
 
-    return findings
+
+def verify_manifest_dependencies(root: Path, cache: dict[str, tuple[str, int | None]]) -> list[Finding]:
+    """Verify declared packages in requirements*.txt, pyproject.toml, and package.json concurrently."""
+    targets = _collect_manifest_targets(root)
+    if not targets:
+        return []
+
+    def _check(item: tuple[str, str, str, int, str]) -> Finding | None:
+        eco, pkg, rel, line, snippet = item
+        status, age_days = verify_pypi_package(pkg, cache) if eco == "PyPI" else verify_npm_package(pkg, cache)
+        return _registry_finding(eco, pkg, status, age_days, rel, line, snippet)
+
+    with ThreadPoolExecutor(max_workers=min(8, len(targets))) as pool:
+        results = list(pool.map(_check, targets))
+    return [f for f in results if f is not None]
