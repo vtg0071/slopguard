@@ -33,9 +33,9 @@ dependencies = []
 slopguard = "slopguard.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/slopguard"
-Repository = "https://github.com/YOUR_USERNAME/slopguard"
-Issues = "https://github.com/YOUR_USERNAME/slopguard/issues"
+Homepage = "https://github.com/vtg0071/slopguard"
+Repository = "https://github.com/vtg0071/slopguard"
+Issues = "https://github.com/vtg0071/slopguard/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

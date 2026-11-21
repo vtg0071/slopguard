@@ -5,7 +5,7 @@ Thanks for helping keep AI-assisted codebases clean and safe!
 ## Local Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/slopguard.git
+git clone https://github.com/vtg0071/slopguard.git
 cd slopguard
 pip install -e .
 python -m unittest discover -s tests -v

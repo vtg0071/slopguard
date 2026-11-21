@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # required for `diff`; the default shallow clone has no base ref
-      - uses: YOUR_USERNAME/slopguard@v0.1.0
+      - uses: vtg0071/slopguard@v0.1.0
         with:
           target: "."
           fail-on: "high"
@@ -143,7 +143,7 @@ If `git diff` fails (unknown ref, shallow clone, not a git repo), `--diff`/`--st
 
 ```yaml
 repos:
-  - repo: https://github.com/YOUR_USERNAME/slopguard
+  - repo: https://github.com/vtg0071/slopguard
     rev: v0.1.0
     hooks:
       - id: slopguard
