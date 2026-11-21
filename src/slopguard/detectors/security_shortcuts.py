@@ -39,15 +39,20 @@ def _check_weak_hash_call(node: ast.Call, rel_path: str, snippet: str) -> Findin
     )
 
 
-def _check_yaml_load_call(node: ast.Call, rel_path: str, snippet: str) -> Finding | None:
-    if not (
+def is_unsafe_yaml_load(node: ast.Call) -> bool:
+    """yaml.load(x) with no Loader; shared with the --fix rewriter so both agree."""
+    return (
         isinstance(node.func, ast.Attribute)
         and node.func.attr == "load"
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "yaml"
-    ):
-        return None
-    if any(kw.arg == "Loader" for kw in node.keywords) or len(node.args) >= 2:
+        and len(node.args) < 2
+        and not any(kw.arg == "Loader" for kw in node.keywords)
+    )
+
+
+def _check_yaml_load_call(node: ast.Call, rel_path: str, snippet: str) -> Finding | None:
+    if not is_unsafe_yaml_load(node):
         return None
     return Finding(
         rule_id="SG007",

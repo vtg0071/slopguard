@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from slopguard import __version__
@@ -13,7 +14,7 @@ from slopguard.scanner import scan_path
 _TOOLS = [
     {
         "name": "slopguard_check",
-        "description": "Scan a repository, directory, or git diff for AI coding slop (SG001-SG008) and return a Slop Score + findings.",
+        "description": "Scan a repository, directory, or git diff for AI coding slop (SG001-SG009) and return a Slop Score + findings.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -26,7 +27,7 @@ _TOOLS = [
     },
     {
         "name": "slopguard_rules",
-        "description": "List all built-in SlopGuard detection rules (SG001-SG008).",
+        "description": "List all built-in SlopGuard detection rules (SG001-SG009).",
         "inputSchema": {"type": "object", "properties": {}},
     },
 ]
@@ -37,8 +38,10 @@ def handle_mcp_request(req: dict[str, Any]) -> dict[str, Any] | None:
     method = req.get("method", "")
     params = req.get("params") or {}
 
-    if method == "notifications/initialized":
+    if "id" not in req:  # JSON-RPC notification: never answered
         return None
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
     if method == "initialize":
         return {
             "jsonrpc": "2.0",
@@ -58,18 +61,26 @@ def handle_mcp_request(req: dict[str, Any]) -> dict[str, Any] | None:
             text = "\n".join(f"{r.rule_id} [{r.default_severity.value}]: {r.title}" for r in RULES.values())
             return {"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": text}]}}
         if name == "slopguard_check":
-            report = scan_path(
-                args.get("target", "."),
-                diff_ref=args.get("diff_ref"),
-                staged=bool(args.get("staged", False)),
-                verify_registry=bool(args.get("verify_registry", False)),
-            )
+            target = str(args.get("target", "."))
+            try:
+                if not Path(target).exists():
+                    raise FileNotFoundError(f"target path '{target}' does not exist")
+                report = scan_path(
+                    target,
+                    diff_ref=args.get("diff_ref"),
+                    staged=bool(args.get("staged", False)),
+                    verify_registry=bool(args.get("verify_registry", False)),
+                )
+            except Exception as exc:  # any scan failure goes back to the client as a tool error
+                text, is_error = f"slopguard_check failed: {exc}", True
+            else:
+                text, is_error = json.dumps(report.to_dict(), indent=2), False
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
-                "result": {"content": [{"type": "text", "text": json.dumps(report.to_dict(), indent=2)}]},
+                "result": {"content": [{"type": "text", "text": text}], "isError": is_error},
             }
-        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown tool: {name}"}}
+        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
 
     return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
@@ -82,6 +93,8 @@ def serve_stdio() -> int:
         try:
             req = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(req, dict):
             continue
         resp = handle_mcp_request(req)
         if resp is not None:

@@ -45,15 +45,18 @@ class SlopGuardConfig:
     max_file_size_bytes: int = 512_000
 
     def is_ignored(self, rel_path: str) -> bool:
-        norm = rel_path.replace("\\", "/").lstrip("./")
+        norm = rel_path.replace("\\", "/").removeprefix("./")
         parts = norm.split("/")
         for pattern in self.ignore:
-            pat = pattern.replace("\\", "/").lstrip("./")
+            pat = pattern.replace("\\", "/").removeprefix("./")
             if fnmatch.fnmatch(norm, pat):
                 return True
             if pat.endswith("/**"):
                 prefix = pat[:-3]
                 if norm == prefix or norm.startswith(prefix + "/"):
+                    return True
+                # A bare `name/**` (e.g. node_modules/**) matches that directory at any depth.
+                if "/" not in prefix and prefix in parts[:-1]:
                     return True
             if any(fnmatch.fnmatch(part, pat) for part in parts):
                 return True
@@ -117,7 +120,7 @@ def _parse_simple_toml_fallback(text: str) -> dict[str, Any]:
     return data
 
 
-def _read_toml(path: Path) -> dict[str, Any]:
+def read_toml(path: Path) -> dict[str, Any]:
     raw = path.read_text(encoding="utf-8")
     if tomllib is not None:
         return tomllib.loads(raw)
@@ -140,9 +143,9 @@ def load_config(root: Path) -> SlopGuardConfig:
 
     raw_section: dict[str, Any] = {}
     if slopguard_toml.is_file():
-        raw_section = _read_toml(slopguard_toml)
+        raw_section = read_toml(slopguard_toml)
     elif pyproject_toml.is_file():
-        raw_section = _read_toml(pyproject_toml).get("tool", {}).get("slopguard", {})
+        raw_section = read_toml(pyproject_toml).get("tool", {}).get("slopguard", {})
 
     if not raw_section:
         return cfg

@@ -9,6 +9,7 @@ from slopguard.models import Finding, Severity
 
 _TERMINATORS = (ast.Return, ast.Raise, ast.Break, ast.Continue)
 _NESTING_NODES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try)
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _MAX_NESTING_DEPTH = 4
 _MAX_FUNC_LINES = 80
 
@@ -16,9 +17,10 @@ _MAX_FUNC_LINES = 80
 def _max_nesting(node: ast.AST, depth: int = 0) -> int:
     best = depth
     for child in ast.iter_child_nodes(node):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(child, _SCOPE_NODES):
             continue
-        next_depth = depth + 1 if isinstance(child, _NESTING_NODES) else depth
+        is_elif = isinstance(node, ast.If) and isinstance(child, ast.If) and node.orelse == [child]
+        next_depth = depth + 1 if isinstance(child, _NESTING_NODES) and not is_elif else depth
         best = max(best, _max_nesting(child, next_depth))
     return best
 
@@ -49,6 +51,8 @@ def _check_unreachable_in_block(
                 )
             )
             break
+        if isinstance(stmt, _SCOPE_NODES):
+            continue  # nested defs are checked on their own by detect_code_quality's ast.walk
         for child_body_attr in ("body", "orelse", "finalbody"):
             sub = getattr(stmt, child_body_attr, None)
             if isinstance(sub, list):

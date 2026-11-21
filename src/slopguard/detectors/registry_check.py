@@ -4,19 +4,26 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
+from slopguard import __version__
+from slopguard.config import read_toml
 from slopguard.models import Finding, Severity
 
 _NEW_PACKAGE_DAYS = 30
+# PEP 508 project names / npm names (optionally @scope/); anything else (URLs, paths, VCS) is not a registry lookup.
+_PYPI_NAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+_NPM_NAME_RE = re.compile(r"^(?:@[a-z0-9][\w.-]*/)?[a-z0-9][\w.-]*$", re.IGNORECASE)
+_NPM_NON_REGISTRY_SPEC = ("file:", "link:", "workspace:", "portal:", "git", "http:", "https:", "github:", "npm:")
 
 
 def _query_json(url: str, timeout: float = 3.0) -> tuple[int, dict | None]:
-    req = urllib.request.Request(url, headers={"User-Agent": "SlopGuard/0.1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"SlopGuard/{__version__}"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8", errors="replace"))
@@ -140,8 +147,8 @@ def _collect_req_targets(root: Path) -> list[tuple[str, str, str, int, str]]:
             line = raw.split("#", 1)[0].strip()
             if not line or line.startswith("-"):
                 continue
-            pkg = re.split(r"[<>=!~\[;\s]", line, maxsplit=1)[0].strip()
-            if pkg:
+            pkg = re.split(r"[<>=!~\[;@\s]", line, maxsplit=1)[0].strip()
+            if _PYPI_NAME_RE.match(pkg):
                 targets.append(("PyPI", pkg, rel, idx, raw.strip()))
     return targets
 
@@ -152,14 +159,13 @@ def _collect_manifest_targets(root: Path) -> list[tuple[str, str, str, int, str]
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
         try:
-            import tomllib
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8", errors="ignore"))
-            for item in data.get("project", {}).get("dependencies", []):
-                pkg = re.split(r"[<>=!~\[;\s]", str(item), maxsplit=1)[0].strip()
-                if pkg:
-                    targets.append(("PyPI", pkg, "pyproject.toml", 1, str(item)))
-        except (ImportError, ValueError, OSError):
-            pass
+            data = read_toml(pyproject)
+        except (ValueError, OSError, UnicodeDecodeError):
+            data = {}
+        for item in data.get("project", {}).get("dependencies", []):
+            pkg = re.split(r"[<>=!~\[;@\s]", str(item), maxsplit=1)[0].strip()
+            if _PYPI_NAME_RE.match(pkg):
+                targets.append(("PyPI", pkg, "pyproject.toml", 1, str(item)))
     pkg_json = root / "package.json"
     if not pkg_json.is_file():
         return targets
@@ -170,7 +176,11 @@ def _collect_manifest_targets(root: Path) -> list[tuple[str, str, str, int, str]
     for sec in ("dependencies", "devDependencies"):
         sec_val = data.get(sec)
         if isinstance(sec_val, dict):
-            targets.extend(("npm", pkg, "package.json", 1, f'"{pkg}"') for pkg in sec_val)
+            targets.extend(
+                ("npm", pkg, "package.json", 1, f'"{pkg}"')
+                for pkg, spec in sec_val.items()
+                if _NPM_NAME_RE.match(pkg) and not str(spec).startswith(_NPM_NON_REGISTRY_SPEC) and "/" not in str(spec)
+            )
     return targets
 
 
@@ -187,4 +197,7 @@ def verify_manifest_dependencies(root: Path, cache: dict[str, tuple[str, int | N
 
     with ThreadPoolExecutor(max_workers=min(8, len(targets))) as pool:
         results = list(pool.map(_check, targets))
+    unverified = sorted({f"{eco}:{pkg}" for eco, pkg, *_ in targets if cache.get(f"{eco.lower()}:{pkg.lower()}", ("",))[0] == "error"})
+    if unverified:
+        print(f"slopguard: warning: could not reach the registry for {len(unverified)} package(s), not verified: {', '.join(unverified)}", file=sys.stderr)
     return [f for f in results if f is not None]

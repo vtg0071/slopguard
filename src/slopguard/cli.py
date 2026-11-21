@@ -15,7 +15,7 @@ from slopguard.fixer import fix_path
 from slopguard.formatters import format_json, format_markdown, format_sarif, format_terminal
 from slopguard.mcp_server import serve_stdio
 from slopguard.models import Severity
-from slopguard.scanner import scan_path, write_baseline
+from slopguard.scanner import GitDiffError, scan_path, write_baseline
 
 _CLAUDE_HOOK_MAX_CHARS = 8000
 
@@ -95,21 +95,25 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
     cfg = load_config(find_project_root(target.resolve()))
     baseline_path = Path(args.baseline) if args.baseline else None
-    report = scan_path(
-        target,
-        config=cfg,
-        diff_ref=args.diff_ref,
-        staged=args.staged,
-        verify_registry=args.verify_registry,
-        baseline_path=baseline_path,
-    )
+    try:
+        report = scan_path(
+            target,
+            config=cfg,
+            diff_ref=args.diff_ref,
+            staged=args.staged,
+            verify_registry=args.verify_registry,
+            baseline_path=baseline_path,
+        )
+    except GitDiffError as exc:
+        print(f"Error: git diff failed ({exc}). In CI, fetch the base ref (e.g. actions/checkout fetch-depth: 0).", file=sys.stderr)
+        return 2
 
     if args.write_baseline:
         write_baseline(report, Path(args.write_baseline))
         print(f"Wrote baseline ({len(report.findings)} findings) to {args.write_baseline}", file=sys.stderr)
 
     formatters = {
-        "terminal": lambda r: format_terminal(r, no_color=args.no_color),
+        "terminal": lambda r: format_terminal(r, no_color=args.no_color or bool(args.output)),
         "json": format_json,
         "sarif": format_sarif,
         "markdown": format_markdown,
@@ -155,8 +159,9 @@ def _install_claude_hook(base_dir: Path | None = None, local: bool = False) -> i
     if settings_path.is_file():
         try:
             data = json.loads(settings_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            data = {}
+        except json.JSONDecodeError as exc:
+            print(f"Error: {settings_path} is not valid JSON ({exc}); fix it and re-run. Nothing was changed.", file=sys.stderr)
+            return 1
 
     hooks = data.setdefault("hooks", {})
     post_tool = hooks.setdefault("PostToolUse", [])
@@ -174,8 +179,7 @@ def _install_claude_hook(base_dir: Path | None = None, local: bool = False) -> i
 
 def _load_bundled_skill_text() -> str:
     try:
-        res = importlib.resources.files("slopguard.data").joinpath("SKILL.md")
-        return res.read_text(encoding="utf-8")
+        return importlib.resources.files("slopguard").joinpath("data").joinpath("SKILL.md").read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError, OSError):
         src_skill = Path(__file__).resolve().parents[2] / "skills" / "slopguard" / "SKILL.md"
         if src_skill.is_file():

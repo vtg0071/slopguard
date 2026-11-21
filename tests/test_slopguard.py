@@ -356,5 +356,137 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
         self.assertEqual(cli_main(["check", str(REPO_ROOT), "--no-color", "--fail-on", "low"]), 0)
 
 
+class TestReviewRegressions(unittest.TestCase):
+    """One check per bug fixed in the pre-launch review."""
+
+    @staticmethod
+    def _git_repo(root: Path) -> None:
+        for cmd in (["init", "-q", "-b", "main"], ["config", "user.name", "T"], ["config", "user.email", "t@example.com"]):
+            subprocess.run(["git", *cmd], cwd=root, check=True, capture_output=True)
+
+    def test_diff_failure_and_option_injection_are_errors_not_clean_scans(self):
+        from slopguard.scanner import GitDiffError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._git_repo(root)
+            (root / "bad.py").write_text("def f():\n    pass\n", encoding="utf-8")
+            with self.assertRaises(GitDiffError):
+                scan_path(root, diff_ref="origin/missing-branch")
+            pwned = root / "pwned"
+            with self.assertRaises(GitDiffError):
+                scan_path(root, diff_ref=f"--output={pwned}")
+            self.assertFalse(pwned.exists())
+            self.assertEqual(cli_main(["check", str(root), "--diff", "origin/missing-branch"]), 2)
+
+    def test_staged_diff_in_monorepo_subproject(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._git_repo(root)
+            sub = root / "svc"
+            sub.mkdir()
+            (sub / "pyproject.toml").write_text("[project]\nname = 'svc'\n", encoding="utf-8")
+            (sub / "app.py").write_text("def f():\n    pass\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+            self.assertEqual([f.rule_id for f in scan_path(sub, staged=True).findings], ["SG002"])
+
+    def test_bare_dir_ignore_matches_at_any_depth(self):
+        cfg = SlopGuardConfig()
+        self.assertTrue(cfg.is_ignored("web/node_modules/lib/index.js"))
+        self.assertTrue(cfg.is_ignored(".venv/lib/x.py"))
+        self.assertFalse(cfg.is_ignored("git/helpers.py"))
+        self.assertFalse(cfg.is_ignored("src/app.py"))
+
+    def test_anthropic_key_reported_once(self):
+        key = "sk-ant-" + "api03-" + "A" * 40
+        findings = detect_secrets(Path("c.py"), "c.py", f'K = "{key}"\n')
+        self.assertEqual([f.message.split(" (")[0] for f in findings], ["Potential Anthropic API Key detected"])
+
+    def test_elif_chain_and_nested_def_not_overreported(self):
+        chain = "def f(x):\n" + "".join(f"    {'if' if i == 0 else 'elif'} x == {i}:\n        return {i}\n" for i in range(6))
+        self.assertEqual(detect_code_quality(Path("q.py"), "q.py", chain), [])
+        nested = "def outer():\n    def inner():\n        return 1\n        x = 2\n    return inner\n"
+        self.assertEqual(len(detect_code_quality(Path("q.py"), "q.py", nested)), 1)
+
+    def test_explicit_stdlib_submodule_is_not_hallucinated(self):
+        code = "import logging\nimport logging.handlers\nh = logging.handlers.RotatingFileHandler\nos_bad = logging.nonexistent_api\n"
+        findings = detect_api_hallucinations(Path("a.py"), "a.py", code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("nonexistent_api", findings[0].message)
+
+    def test_emoji_zwj_kept_but_ascii_zwj_flagged_and_fixed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            emoji = "\U0001F469\u200d\U0001F4BB"
+            md = root / "README.md"
+            md.write_text(f"Built by {emoji} devs\n", encoding="utf-8")
+            py = root / "auth.py"
+            py.write_text("ROLE = 'adm\u200din'\n", encoding="utf-8")
+            self.assertEqual(detect_prompt_injection(md, "README.md", md.read_text(encoding="utf-8")), [])
+            self.assertEqual(len(detect_prompt_injection(py, "auth.py", py.read_text(encoding="utf-8"))), 1)
+            fix_path(root)
+            self.assertIn(emoji, md.read_text(encoding="utf-8"))
+            self.assertEqual(py.read_text(encoding="utf-8"), "ROLE = 'admin'\n")
+
+    def test_fixer_only_rewrites_flagged_yaml_calls_and_keeps_crlf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "y.py"
+            p.write_bytes(b"import yaml\r\nd = yaml.load(f, yaml.FullLoader)\r\ne = yaml.load(g)\r\nh = yaml.load(g, Loader=yaml.SafeLoader)\r\n")
+            fix_path(Path(tmp))
+            self.assertEqual(
+                p.read_bytes(),
+                b"import yaml\r\nd = yaml.load(f, yaml.FullLoader)\r\ne = yaml.safe_load(g)\r\nh = yaml.load(g, Loader=yaml.SafeLoader)\r\n",
+            )
+
+    def test_hook_installer_refuses_to_overwrite_invalid_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / ".claude" / "settings.json"
+            settings.parent.mkdir()
+            original = '{"permissions": {"allow": ["Bash(ls)"]},}\n'
+            settings.write_text(original, encoding="utf-8")
+            self.assertEqual(_install_claude_hook(Path(tmp)), 1)
+            self.assertEqual(settings.read_text(encoding="utf-8"), original)
+
+    def test_mcp_notifications_ping_and_tool_errors(self):
+        self.assertIsNone(handle_mcp_request({"jsonrpc": "2.0", "method": "notifications/cancelled"}))
+        self.assertEqual(handle_mcp_request({"jsonrpc": "2.0", "id": 1, "method": "ping"})["result"], {})
+        resp = handle_mcp_request({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "slopguard_check", "arguments": {"target": "/definitely/not/here"}},
+        })
+        self.assertTrue(resp["result"]["isError"])
+
+    def test_registry_skips_non_registry_requirements(self):
+        from slopguard.detectors.registry_check import _collect_manifest_targets
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "requirements.txt").write_text(
+                "requests==2.31\ngit+https://github.com/o/r.git@v1\n./vendored\nhttps://x.test/p.whl\nflask @ https://x.test/f.whl\n",
+                encoding="utf-8",
+            )
+            (root / "package.json").write_text(
+                json.dumps({"dependencies": {"react": "^18", "@me/shared": "workspace:*", "lib": "file:../lib", "fork": "user/repo"}}),
+                encoding="utf-8",
+            )
+            names = [pkg for _, pkg, *_ in _collect_manifest_targets(root)]
+            self.assertEqual(names, ["requests", "flask", "react"])
+
+    def test_sibling_module_import_is_local(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = Path(tmp) / "scripts"
+            scripts.mkdir()
+            (scripts / "helpers.py").write_text("X = 1\n", encoding="utf-8")
+            main = scripts / "deploy.py"
+            findings = detect_phantom_imports(main, "scripts/deploy.py", "from helpers import X\nimport nope_pkg\n", set(), set())
+            self.assertEqual([f.line for f in findings], [2])
+
+    def test_bundled_skill_matches_repo_skill(self):
+        bundled = REPO_ROOT / "src" / "slopguard" / "data" / "SKILL.md"
+        self.assertEqual(bundled.read_text(encoding="utf-8"), (REPO_ROOT / "skills" / "slopguard" / "SKILL.md").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

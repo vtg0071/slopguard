@@ -13,7 +13,9 @@ BIDI_CHARS = {
     "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
     "\u2066", "\u2067", "\u2068", "\u2069",
 }
-ZERO_WIDTH_CHARS = {"\u200b", "\u200c", "\u200d"}
+# ZWNJ/ZWJ between two non-ASCII chars is legitimate (emoji sequences, Persian/Indic text);
+# next to ASCII (identifiers, keywords) or a line edge it is a hiding trick.
+HIDDEN_ZERO_WIDTH_RE = re.compile(r"\u200b|(?<![^\x00-\x7f])[\u200c\u200d]|[\u200c\u200d](?![^\x00-\x7f])")
 
 PROMPT_INJECTION_RE = re.compile(
     r"(ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions"
@@ -50,6 +52,7 @@ def detect_prompt_injection(
 
     # 1. Hidden Unicode / Trojan Source characters across all lines
     for idx, line in enumerate(lines, start=1):
+        zw = HIDDEN_ZERO_WIDTH_RE.search(line)
         for col, ch in enumerate(line, start=1):
             if ch in BIDI_CHARS:
                 findings.append(
@@ -67,7 +70,7 @@ def detect_prompt_injection(
                     )
                 )
                 break
-            if ch in ZERO_WIDTH_CHARS:
+            if zw is not None and col - 1 == zw.start():
                 findings.append(
                     Finding(
                         rule_id="SG006",

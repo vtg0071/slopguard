@@ -43,19 +43,27 @@ runs:
       run: pip install "${{ github.action_path }}"
     - name: Run SlopGuard
       shell: bash
+      # Inputs go through env vars, never ${{ }} inside the script, so a branch name or ref can't inject shell.
+      env:
+        SG_TARGET: ${{ inputs.target }}
+        SG_DIFF: ${{ inputs.diff }}
+        SG_VERIFY: ${{ inputs.verify-registry }}
+        SG_FAIL_ON: ${{ inputs.fail-on }}
+        SG_SARIF: ${{ inputs.sarif-file }}
       run: |
-        EXTRA_ARGS=""
-        if [ -n "${{ inputs.diff }}" ]; then EXTRA_ARGS="$EXTRA_ARGS --diff ${{ inputs.diff }}"; fi
-        if [ "${{ inputs.verify-registry }}" = "true" ]; then EXTRA_ARGS="$EXTRA_ARGS --verify-registry"; fi
-        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --format sarif --output "${{ inputs.sarif-file }}" --fail-on none
-        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --format markdown --output slopguard-pr-comment.md --fail-on none
-        slopguard check "${{ inputs.target }}" $EXTRA_ARGS --fail-on "${{ inputs.fail-on }}"
+        EXTRA_ARGS=()
+        if [ -n "$SG_DIFF" ]; then EXTRA_ARGS+=(--diff "$SG_DIFF"); fi
+        if [ "$SG_VERIFY" = "true" ]; then EXTRA_ARGS+=(--verify-registry); fi
+        slopguard check "$SG_TARGET" "${EXTRA_ARGS[@]}" --format sarif --output "$SG_SARIF" --fail-on none
+        slopguard check "$SG_TARGET" "${EXTRA_ARGS[@]}" --format markdown --output slopguard-pr-comment.md --fail-on none
+        slopguard check "$SG_TARGET" "${EXTRA_ARGS[@]}" --fail-on "$SG_FAIL_ON"
     - name: Comment on PR
       if: always() && github.event_name == 'pull_request' && inputs.comment-pr == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         if [ -f slopguard-pr-comment.md ]; then
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file slopguard-pr-comment.md || true
+          gh pr comment "$PR_NUMBER" --body-file slopguard-pr-comment.md || echo "::warning::Could not post PR comment (needs pull-requests: write)"
         fi

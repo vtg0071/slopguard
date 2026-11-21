@@ -100,7 +100,7 @@ Run one command to wire SlopGuard into `.claude/settings.json` (or pass `--local
 slopguard hook --install claude
 ```
 
-Every time Claude Code edits or writes a file, `slopguard hook --claude` scans it in milliseconds and feeds any issues back to the agent before you even review the diff.
+Every time Claude Code edits or writes a file, `slopguard hook --claude` scans it in milliseconds and feeds any issues back to the agent before you even review the diff. The hook runs `slopguard` from Claude Code's `PATH`; if Claude Code reports `command not found`, replace the command in `.claude/settings*.json` with the absolute path from `which slopguard`.
 
 ### 3. Agent Skill (`SKILL.md` — Research-First + Auto-Gate)
 
@@ -111,6 +111,7 @@ slopguard skill --install all  # installs for Claude Code & Cursor
 
 # Or run as a zero-dependency stdio MCP server for any agent
 slopguard mcp
+claude mcp add --transport stdio slopguard -- slopguard mcp  # register it with Claude Code
 ```
 
 ### 4. GitHub Action
@@ -122,13 +123,21 @@ on: [pull_request]
 jobs:
   slopguard:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # for the PR summary comment
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # required for `diff`; the default shallow clone has no base ref
       - uses: YOUR_USERNAME/slopguard@v0.1.0
         with:
           target: "."
           fail-on: "high"
+          diff: "origin/${{ github.base_ref }}" # optional: only report changed lines
 ```
+
+If `git diff` fails (unknown ref, shallow clone, not a git repo), `--diff`/`--staged` exit with code `2` instead of reporting a clean scan.
 
 ### 5. Pre-Commit Hook
 

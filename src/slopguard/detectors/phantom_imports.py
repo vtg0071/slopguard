@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 
+from slopguard.config import read_toml
 from slopguard.models import Finding, Severity
 
 PYPI_IMPORT_ALIASES: dict[str, set[str]] = {
@@ -92,13 +93,9 @@ def _add_pkg_with_aliases(raw_name: str, deps: set[str], dist_map: dict[str, set
 def _collect_pyproject_deps(pyproject: Path, deps: set[str], dist_map: dict[str, set[str]]) -> None:
     if not pyproject.is_file():
         return
-    text = pyproject.read_text(encoding="utf-8", errors="ignore")
     try:
-        import tomllib
-        data = tomllib.loads(text)
-    except (ImportError, ValueError):
-        for m in re.finditer(r'"([a-zA-Z0-9_.\-]+)(?:[<>=!~\[;][^"]*)?"', text):
-            _add_pkg_with_aliases(m.group(1), deps, dist_map)
+        data = read_toml(pyproject)
+    except (ValueError, OSError, UnicodeDecodeError):
         return
 
     all_raw = list(data.get("project", {}).get("dependencies", []))
@@ -206,7 +203,14 @@ def _is_known_python_module(top: str, declared_deps: set[str], local_modules: se
     )
 
 
+def _is_sibling_module(file_path: Path, name: str) -> bool:
+    """Python puts a script's own directory on sys.path, so `import helpers` beside helpers.py is local."""
+    parent = file_path.parent
+    return (parent / f"{name}.py").is_file() or (parent / name / "__init__.py").is_file()
+
+
 def _scan_python_imports(
+    file_path: Path,
     rel_path: str,
     content: str,
     declared_deps: set[str],
@@ -227,7 +231,9 @@ def _scan_python_imports(
         if isinstance(node, ast.Import) and node.lineno not in guarded_lines:
             for alias in node.names:
                 top = alias.name.split(".", 1)[0].lower()
-                if not _is_known_python_module(top, declared_deps, local_modules):
+                if not _is_known_python_module(top, declared_deps, local_modules) and not _is_sibling_module(
+                    file_path, alias.name.split(".", 1)[0]
+                ):
                     snippet = lines[node.lineno - 1].strip() if 0 < node.lineno <= len(lines) else ""
                     findings.append(
                         Finding(
@@ -245,7 +251,9 @@ def _scan_python_imports(
                     )
         elif isinstance(node, ast.ImportFrom) and node.lineno not in guarded_lines and node.level == 0 and node.module:
             top = node.module.split(".", 1)[0].lower()
-            if not _is_known_python_module(top, declared_deps, local_modules):
+            if not _is_known_python_module(top, declared_deps, local_modules) and not _is_sibling_module(
+                file_path, node.module.split(".", 1)[0]
+            ):
                 snippet = lines[node.lineno - 1].strip() if 0 < node.lineno <= len(lines) else ""
                 findings.append(
                     Finding(
@@ -308,7 +316,7 @@ def detect_phantom_imports(
 ) -> list[Finding]:
     suffix = file_path.suffix.lower()
     if suffix == ".py":
-        return _scan_python_imports(rel_path, content, declared_deps, local_modules, tree)
+        return _scan_python_imports(file_path, rel_path, content, declared_deps, local_modules, tree)
     if suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
         return _scan_js_imports(file_path, rel_path, content, declared_deps)
     return []

@@ -93,17 +93,25 @@ def _add_untracked_lines(root: Path, changed: dict[str, set[int]]) -> None:
             changed[rel_clean] = set(range(1, max(2, line_count + 1)))
 
 
+class GitDiffError(RuntimeError):
+    """git diff failed; scanning would otherwise silently report zero findings."""
+
+
 def _get_git_changed_lines(root: Path, diff_ref: str | None = None, staged: bool = False) -> dict[str, set[int]]:
     """Return {rel_posix_path: {added_or_modified_line_numbers}} from git diff (+ untracked on --diff)."""
     if not staged and not diff_ref:
         return {}
-    cmd = ["git", "diff", "--unified=0", "--no-color", "--cached"] if staged else ["git", "diff", "--unified=0", "--no-color", str(diff_ref)]
+    if not staged and str(diff_ref).startswith("-"):
+        raise GitDiffError(f"invalid git ref {diff_ref!r}")
+    # --relative: paths relative to the project root even when it is a subdirectory of the git repo.
+    cmd = ["git", "diff", "--unified=0", "--no-color", "--no-ext-diff", "--relative", "--src-prefix=a/", "--dst-prefix=b/"]
+    cmd += ["--cached"] if staged else [str(diff_ref), "--"]
     try:
         proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, check=False, timeout=15)
-    except (OSError, subprocess.SubprocessError):
-        return {}
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise GitDiffError(f"could not run git diff: {exc}") from exc
     if proc.returncode != 0:
-        return {}
+        raise GitDiffError(proc.stderr.strip() or f"git diff exited with {proc.returncode}")
 
     changed = _parse_diff_hunks(proc.stdout)
     if not staged and diff_ref:

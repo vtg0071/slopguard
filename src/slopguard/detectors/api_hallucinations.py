@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
+import sys
 from pathlib import Path
 
 from slopguard.detectors.phantom_imports import STDLIB_MODULES
 from slopguard.models import Finding, Severity
 
+# ponytail: attrs come from the running interpreter, so APIs newer than it are reported; the message names the version.
+_PY_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 _SAFE_STDLIB_INSPECT = STDLIB_MODULES - {"antigravity", "this", "tty", "pty"}
 _MODULE_ATTR_CACHE: dict[str, set[str] | None] = {}
 
@@ -26,6 +30,14 @@ def _get_stdlib_attrs(mod_name: str) -> set[str] | None:
         attrs = None
     _MODULE_ATTR_CACHE[mod_name] = attrs
     return attrs
+
+
+def _is_submodule(mod_name: str, attr: str) -> bool:
+    """`logging.handlers` etc. are absent from dir(logging) until imported, but are real."""
+    try:
+        return importlib.util.find_spec(f"{mod_name}.{attr}") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _collect_stdlib_aliases(tree: ast.AST) -> dict[str, str]:
@@ -72,7 +84,7 @@ def detect_api_hallucinations(
         if not mod_name:
             continue
         attrs = _get_stdlib_attrs(mod_name)
-        if attrs is None or node.attr in attrs or node.attr.startswith("_"):
+        if attrs is None or node.attr in attrs or node.attr.startswith("_") or _is_submodule(mod_name, node.attr):
             continue
         snippet = lines[node.lineno - 1].strip() if 0 < node.lineno <= len(lines) else ""
         findings.append(
@@ -84,7 +96,7 @@ def detect_api_hallucinations(
                 file_path=rel_path,
                 line=node.lineno,
                 column=node.col_offset + 1,
-                message=f"'{mod_name}.{node.attr}' does not exist in Python stdlib module '{mod_name}'.",
+                message=f"'{mod_name}.{node.attr}' does not exist in Python {_PY_VERSION} stdlib module '{mod_name}'.",
                 snippet=snippet,
                 suggestion=f"Check the official Python '{mod_name}' docs and replace '{node.attr}' with a valid attribute.",
             )
