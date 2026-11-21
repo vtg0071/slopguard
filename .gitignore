@@ -8,3 +8,9 @@ build/
 .ruff_cache/
 .mypy_cache/
 slopguard.sarif
+slopguard-pr-comment.md
+.DS_Store
+.env
+.env.*
+*.pem
+.claude/settings.local.json

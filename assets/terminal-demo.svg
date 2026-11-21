@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" width="880" height="480">
-  <rect width="880" height="480" rx="14" fill="#0D1117" stroke="#30363D" stroke-width="1.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 450" width="880" height="450">
+  <rect width="880" height="450" rx="14" fill="#0D1117" stroke="#30363D" stroke-width="1.5"/>
   <rect width="880" height="36" rx="14" fill="#161B22"/>
   <rect y="22" width="880" height="14" fill="#161B22"/>
   <circle cx="22" cy="18" r="6" fill="#FF5F56"/>
@@ -23,32 +23,27 @@
     <text x="112" y="200" fill="#D2A8FF" font-weight="bold">[SG006]</text>
     <text x="176" y="200" fill="#E6EDF3">app.py:6:3 — Agent prompt-injection: 'Ignore all previous instructions'.</text>
 
-    <rect x="24" y="216" width="76" height="20" rx="4" fill="#DA3633"/>
-    <text x="62" y="230" text-anchor="middle" fill="#FFFFFF" font-weight="bold" font-size="11">CRITICAL</text>
-    <text x="112" y="230" fill="#D2A8FF" font-weight="bold">[SG005]</text>
-    <text x="176" y="230" fill="#E6EDF3">app.py:7:15 — Potential Stripe Live Key detected (sk_liv...mnop).</text>
+    <text x="24" y="232" fill="#F85149" font-weight="bold">HIGH</text>
+    <text x="112" y="232" fill="#D2A8FF" font-weight="bold">[SG003]</text>
+    <text x="176" y="232" fill="#E6EDF3">app.py:13:5 — Broad 'except Exception:' silently swallows errors.</text>
 
-    <text x="24" y="262" fill="#F85149" font-weight="bold">HIGH</text>
-    <text x="112" y="262" fill="#D2A8FF" font-weight="bold">[SG003]</text>
-    <text x="176" y="262" fill="#E6EDF3">app.py:14:5 — Broad 'except Exception:' silently swallows errors.</text>
+    <text x="24" y="260" fill="#F85149" font-weight="bold">HIGH</text>
+    <text x="112" y="260" fill="#D2A8FF" font-weight="bold">[SG002]</text>
+    <text x="176" y="260" fill="#E6EDF3">app.py:17:1 — Function 'verify_webhook_signature' raises NotImplementedError.</text>
 
-    <text x="24" y="290" fill="#F85149" font-weight="bold">HIGH</text>
-    <text x="112" y="290" fill="#D2A8FF" font-weight="bold">[SG002]</text>
-    <text x="176" y="290" fill="#E6EDF3">app.py:18:1 — Function 'verify_webhook_signature' raises NotImplementedError.</text>
+    <text x="24" y="288" fill="#F85149" font-weight="bold">HIGH</text>
+    <text x="112" y="288" fill="#D2A8FF" font-weight="bold">[SG004]</text>
+    <text x="176" y="288" fill="#E6EDF3">test_app.py:10:5 — Tautological assertion in 'test_always_passes' always passes.</text>
 
-    <text x="24" y="318" fill="#F85149" font-weight="bold">HIGH</text>
-    <text x="112" y="318" fill="#D2A8FF" font-weight="bold">[SG004]</text>
-    <text x="176" y="318" fill="#E6EDF3">test_app.py:10:5 — Tautological assertion in 'test_always_passes' always passes.</text>
+    <text x="24" y="316" fill="#D29922" font-weight="bold">MEDIUM</text>
+    <text x="112" y="316" fill="#D2A8FF" font-weight="bold">[SG004]</text>
+    <text x="176" y="316" fill="#E6EDF3">test_app.py:4:1 — Test 'test_sync_billing_records' has zero assertions.</text>
 
-    <text x="24" y="346" fill="#D29922" font-weight="bold">MEDIUM</text>
-    <text x="112" y="346" fill="#D2A8FF" font-weight="bold">[SG004]</text>
-    <text x="176" y="346" fill="#E6EDF3">test_app.py:4:1 — Test 'test_sync_billing_records' has zero assertions.</text>
+    <text x="24" y="344" fill="#56D364" font-weight="bold">LOW</text>
+    <text x="112" y="344" fill="#D2A8FF" font-weight="bold">[SG002]</text>
+    <text x="176" y="344" fill="#E6EDF3">app.py:10:5 — Unresolved TODO marker: wire up real Stripe pagination.</text>
 
-    <text x="24" y="374" fill="#56D364" font-weight="bold">LOW</text>
-    <text x="112" y="374" fill="#D2A8FF" font-weight="bold">[SG002]</text>
-    <text x="176" y="374" fill="#E6EDF3">app.py:11:5 — Unresolved TODO marker: wire up real Stripe pagination.</text>
-
-    <line x1="24" y1="402" x2="856" y2="402" stroke="#30363D" stroke-width="1"/>
-    <text x="24" y="434" fill="#F9FAFB" font-weight="bold">Summary: 8 issue(s) — 3 critical, 3 high, 1 medium, 1 low</text>
+    <line x1="24" y1="372" x2="856" y2="372" stroke="#30363D" stroke-width="1"/>
+    <text x="24" y="404" fill="#F9FAFB" font-weight="bold">Summary: 7 issue(s) — 2 critical, 3 high, 1 medium, 1 low</text>
   </g>
 </svg>

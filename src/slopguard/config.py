@@ -34,6 +34,10 @@ DEFAULT_IGNORES = [
     "*.min.js",
     "*.min.css",
 ]
+_ANY_DEPTH_DIRS = {
+    ".git", ".hg", ".svn", ".venv", "__pycache__", "node_modules",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+}
 
 
 @dataclass
@@ -55,8 +59,9 @@ class SlopGuardConfig:
                 prefix = pat[:-3]
                 if norm == prefix or norm.startswith(prefix + "/"):
                     return True
-                # A bare `name/**` (e.g. node_modules/**) matches that directory at any depth.
-                if "/" not in prefix and prefix in parts[:-1]:
+                # Only unambiguous vendored/cache dirs match at any depth; generic names like
+                # build/ or env/ stay anchored so nested source dirs can't dodge the scan.
+                if prefix in _ANY_DEPTH_DIRS and prefix in parts[:-1]:
                     return True
             if any(fnmatch.fnmatch(part, pat) for part in parts):
                 return True

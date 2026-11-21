@@ -74,7 +74,8 @@ slopguard check .
 slopguard check --diff origin/main
 slopguard check --staged
 
-# Also verify declared PyPI/npm packages against live registries (404 / <30d old)
+# Also verify declared PyPI/npm packages against live registries (404 / <30d old).
+# Opt-in: sends only the declared package names to pypi.org / registry.npmjs.org.
 slopguard check . --verify-registry
 
 # Auto-fix safe mechanical slop (hidden Unicode, yaml.load) & adopt via baseline

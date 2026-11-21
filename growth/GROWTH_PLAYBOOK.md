@@ -5,7 +5,7 @@ This playbook is structured so **Claude Code** (or any agent with `gh`, `git`, b
 ---
 
 ## 1. Core Viral Mechanics Built Into the Repo
-1. **Instant "Aha!" Demo (`examples/messy_ai_pr`)**: Anyone cloning or installing runs one command and immediately sees a `100/100 Grade F` catch of a hallucinated PyPI package (`fast_yaml_magic`), a leaked Stripe key, a prompt injection, and `assert True` test cheating in `1.1ms`.
+1. **Instant "Aha!" Demo (`examples/messy_ai_pr`)**: Anyone cloning or installing runs one command and immediately sees a `100/100 Grade F` catch of a hallucinated PyPI package (`fast_yaml_magic`), a prompt injection, and `assert True` test cheating in `1.1ms`.
 2. **Zero-Dependency + <60ms Speed**: No `pip` dependency hell, no LLM API key required.
 3. **Built-in Agent Hook (`slopguard hook --claude`)**: Rides the massive wave of Claude Code / Cursor / Codex power users who share `.claude/settings.json` snippets on X and Reddit.
 4. **Built-in Badge Loop**: Teams add `Protected by SlopGuard` or the GitHub Action PR comment (`## 🚨 SlopGuard Report — Grade F`), exposing every contributor and reviewer to the repo.

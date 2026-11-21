@@ -330,7 +330,7 @@ class TestConfigScannerAndProductionE2E(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         payload = json.loads(proc.stdout)
         self.assertEqual(payload["grade"], "F")
-        self.assertGreaterEqual(len(payload["findings"]), 8)
+        self.assertGreaterEqual(len(payload["findings"]), 7)
 
         # 2. Subprocess Claude Code PostToolUse hook JSON stdin
         hook_in = json.dumps({"tool_input": {"file_path": str(demo_dir / "app.py")}})
@@ -396,6 +396,9 @@ class TestReviewRegressions(unittest.TestCase):
         self.assertTrue(cfg.is_ignored(".venv/lib/x.py"))
         self.assertFalse(cfg.is_ignored("git/helpers.py"))
         self.assertFalse(cfg.is_ignored("src/app.py"))
+        self.assertFalse(cfg.is_ignored("src/app/build/deploy.py"))  # generic names stay root-anchored
+        self.assertFalse(cfg.is_ignored("src/app/env/settings.py"))
+        self.assertTrue(cfg.is_ignored("build/out.py"))
 
     def test_anthropic_key_reported_once(self):
         key = "sk-ant-" + "api03-" + "A" * 40
